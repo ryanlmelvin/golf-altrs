@@ -6,15 +6,15 @@ A bright, unhurried browser golf game set around Alabama’s Robert Trent Jones 
 
 [Play](https://ryanlmelvin.github.io/golf-altrs/) · [Source](https://github.com/ryanlmelvin/golf-altrs)
 
-This edition includes **11 destinations**, **33 optional local stories**, and an optional first story arc of **24 authored outings**. Its first three outings keep things ordinary. Golf and free travel continue after the arc’s conclusion; the authored story is finite, while the trip has no forced ending. The courses are original compact layouts, not recreations of the real courses.
+This edition includes **11 destinations**, **33 explorable local places**, and an optional first story arc of **24 authored outings**. Its first three outings keep things ordinary. Golf and free travel continue after the arc’s conclusion; the authored story is finite, while the trip has no forced ending. The courses are original compact layouts, not recreations of the real courses.
 
 ## Play
 
 The game opens directly on a full-screen, playable course. Pull back from the ball, opposite the direction of your shot, then release. Return to the ball before releasing to cancel. Drag the ground to look around; pinch or scroll to zoom. Finish five flags in any order. **Shot controls** opens the optional power slider and **Swing** button. Keyboard controls and assistance are in **Menu → Settings**.
 
-The small menu opens **Explore Alabama**, **Clubhouse**, and the notebook when there is something to keep. After the opening round, all 11 destinations are available. Clubhouse conversations are optional; local stories rotate as you play more rounds at a destination. Source links accompany the real-place notes.
+The small menu opens **Explore Alabama**, **Clubhouse**, and the notebook when there is something to keep. After the opening round, all 11 destinations are available. Clubhouse conversations are optional; local recommendations rotate as you play more rounds at a destination. **Worth a detour** takes you to that place. Inspect the scene, find something worth keeping, and return to your golf round when you like. Discoveries go in **Notebook → Places & people**, with source links and a way to revisit. These are original illustrated settings, not surveyed recreations.
 
-The close, angled 3D camera follows the ball and frames the next shot. Explore the rest of the course by panning, then use the recenter button to return to your ball. Touch controls have at least 44-pixel targets. Rotating the screen preserves the ball's position and the current round.
+The angled 3D camera sits behind the ball, looking along the shot toward the next flag. It follows the ball and turns smoothly between holes. Explore the rest of the course by panning, then use the recenter button to return to your ball. Touch controls have at least 44-pixel targets. Rotating the screen preserves the ball's position and the current round.
 
 Follow reception’s occasional suggestions if you want to continue the story, or choose your own route. Later wagers require a strictly lower score. A loss leaves room for another try. There is no timer, required reading list, or deadline to go home.
 
@@ -32,7 +32,7 @@ Open [localhost:4320](http://localhost:4320). The server also serves [the GitHub
 
 Open online once to cache the game. Compatible browsers offer **Install** or **Add to Home Screen**; on iPhone and iPad, use Safari’s Share menu. Installation controls depend on the browser.
 
-Progress, rounds in play, discoveries, and settings stay in this browser on this device. Use **Menu → Settings → Save backup** and **Open backup** to transfer progress or keep a separate copy. Installed apps may have their own storage. Clearing website data removes local progress. Saves and caches are scoped to the project path, independently of other games on the same GitHub Pages domain.
+Progress, rounds in play, your current detour, discoveries, and settings stay in this browser on this device. Use **Menu → Settings → Save backup** and **Open backup** to transfer progress or keep a separate copy. Installed apps may have their own storage. Clearing website data removes local progress. Saves and caches are scoped to the project path, independently of other games on the same GitHub Pages domain.
 
 Every game asset is local and cached for offline play. Source links open external reading only when selected. Updates wait until existing game windows close. Increment `VERSION` in `docs/sw.js` whenever shipped assets change.
 
@@ -54,7 +54,9 @@ Checks cover JavaScript syntax, the offline asset list, golf physics and resumab
 | `docs/app.js` | Interface, notebook, travel, and game flow |
 | `docs/state.js` | Progress rules and save validation |
 | `docs/journey.js` | The optional first arc, discoveries, and deductions |
-| `docs/alabama.js` | Eleven destinations, locals, and 33 source-linked place notes |
+| `docs/alabama.js` | Eleven golf destinations, locals, and 33 source-linked place notes |
+| `docs/detours.js` | Local places, inspectable details, and collectible findings |
+| `docs/detour-scene.js` | Interactive 3D detour scenery |
 | `docs/story.js` | Shared story endings, crowd details, and research sources |
 | `docs/golf.js` | Golf input, course variations, finds, and terrain physics |
 | `docs/scene.js` | 3D course art, lighting, and ball-following camera |

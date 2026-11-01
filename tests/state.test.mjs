@@ -1,8 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { newGame, unlockedLocations, nextOuting, availableOuting, roundContext, roundOuting, roundFind, startRound, prepareRound, clearRound, collect, respond, solve, finishRound, chooseEnding, validateSave, parseBackup, storageKey, travel } from '../docs/state.js';
+import { newGame, unlockedLocations, nextOuting, availableOuting, roundContext, roundOuting, roundFind, startRound, prepareRound, clearRound, collect, respond, solve, finishRound, chooseEnding, validateSave, parseBackup, storageKey, travel, visitDetour, leaveDetour, discoverDetour } from '../docs/state.js';
 import { OUTINGS, JOURNEY_EVIDENCE as EVIDENCE, JOURNEY_DEDUCTIONS as DEDUCTIONS } from '../docs/journey.js';
 import { makeRound, createCourse, launchShot, stepRound } from '../docs/golf.js';
+import { DESTINATIONS } from '../docs/alabama.js';
 
 const scorecard = (strokes = 10) => ({ strokes, holes: [1, 1, 1, 1, strokes - 4], finished: true });
 function begin(s, index) {
@@ -208,4 +209,72 @@ test('an untouched recovered clue updates its encounter after the paper is colle
   assert.equal(roundContext(s).findId,null);
   assert.equal(roundOuting(s).id,'back-porch');
   assert.equal(JSON.stringify(s.rounds[s.current]),snapshot);
+});
+
+
+test('detours require an unlocked destination and a visit before a discovery', () => {
+  const s=newGame(), local=DESTINATIONS[0].lore[0].id, away=DESTINATIONS[1].lore[0].id;
+  assert.deepEqual(s.detourFound,[]);assert.equal(s.activeDetour,null);
+  assert.equal(discoverDetour(s,local),false);
+  assert.equal(visitDetour(s,away),false);
+  assert.equal(visitDetour(s,'not-a-place'),false);
+  assert.equal(s.activeDetour,null);
+  assert.equal(visitDetour(s,local),true);
+  assert.equal(s.activeDetour,local);
+  assert.deepEqual(s.detourFound,[],'arriving does not collect the find');
+  assert.equal(discoverDetour(s,away),false);
+  assert.equal(discoverDetour(s,local),true);
+  assert.deepEqual(s.detourFound,[local]);assert.deepEqual(s.loreSeen,[local]);
+  begin(s,0);finish(s,0);
+  assert.equal(visitDetour(s,away),true);
+  assert.equal(discoverDetour(s,away),true);
+});
+
+test('a detour can be resumed and revisited without duplicating its discovery', () => {
+  const s=newGame(), id=DESTINATIONS[0].lore[1].id;
+  visitDetour(s,id);
+  const arrived=parseBackup(JSON.stringify(s));
+  assert.equal(arrived.activeDetour,id);assert.deepEqual(arrived.detourFound,[]);
+  assert.equal(discoverDetour(arrived,id),true);
+  const found=parseBackup(JSON.stringify(arrived));
+  assert.equal(found.activeDetour,id);assert.deepEqual(found.detourFound,[id]);assert.deepEqual(found.loreSeen,[id]);
+  assert.equal(discoverDetour(found,id),false);
+  assert.equal(leaveDetour(found),true);assert.equal(leaveDetour(found),false);
+  assert.equal(found.activeDetour,null);
+  assert.equal(discoverDetour(found,id),false);
+  assert.equal(visitDetour(found,id),true);assert.equal(discoverDetour(found,id),false);
+  assert.deepEqual(found.detourFound,[id]);assert.deepEqual(found.loreSeen,[id]);
+});
+
+test('exploring preserves the exact golf save and does not advance the mystery', () => {
+  const s=newGame();prepareRound(s);s.rounds[0]=makeRound();
+  launchShot(s.rounds[0],-.8,50);stepRound(s.rounds[0],createCourse());
+  const before=structuredClone(s);
+  const id=DESTINATIONS[0].lore[2].id;
+  assert.equal(visitDetour(s,id),true);assert.equal(discoverDetour(s,id),true);leaveDetour(s);
+  const {detourFound,loreSeen,...unchanged}=s;
+  const {detourFound:oldFinds,loreSeen:oldNotes,...expected}=before;
+  assert.deepEqual(unchanged,expected,'a side trip cannot move the ball, spend strokes, or advance the story');
+  assert.deepEqual(detourFound,[id]);assert.deepEqual(loreSeen,[id]);
+  assert.equal(s.totalRounds,0);assert.deepEqual(s.evidence,[]);assert.deepEqual(s.solved,[]);assert.equal(s.chorus,0);
+});
+
+test('detour save validation rejects unknown and locked places without losing legacy notes', () => {
+  const local=DESTINATIONS[0].lore[0].id, away=DESTINATIONS[7].lore[0].id;
+  const imported=validateSave({...newGame(),totalRounds:100,activeDetour:away,detourFound:[local,local,away,'unknown',99],loreSeen:['legacy-note',away]});
+  assert.equal(imported.totalRounds,0,'unlocking is derived from completed round counts');
+  assert.equal(imported.activeDetour,null);assert.deepEqual(imported.detourFound,[local]);
+  assert.deepEqual(imported.loreSeen,['legacy-note',away,local],'existing notebook entries remain readable');
+  for(const activeDetour of ['unknown',{},17]) assert.equal(validateSave({...newGame(),activeDetour}).activeDetour,null);
+  const unlocked=validateSave({...newGame(),counts:{0:1},activeDetour:away,detourFound:[away,away]});
+  assert.equal(unlocked.activeDetour,away);assert.deepEqual(unlocked.detourFound,[away]);
+});
+
+test('old version-two backups gain empty exploration state and retain their read notes', () => {
+  const old=newGame(), id=DESTINATIONS[0].lore[0].id;
+  delete old.detourFound;delete old.activeDetour;old.loreSeen=[id];
+  const restored=parseBackup(JSON.stringify(old));
+  assert.equal(restored.version,2);assert.equal(restored.activeDetour,null);assert.deepEqual(restored.detourFound,[]);assert.deepEqual(restored.loreSeen,[id]);
+  visitDetour(restored,id);assert.equal(discoverDetour(restored,id),true);
+  assert.deepEqual(restored.detourFound,[id]);assert.deepEqual(restored.loreSeen,[id],'finding an already-read note does not duplicate it');
 });

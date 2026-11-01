@@ -2,10 +2,29 @@ import { OUTINGS, JOURNEY_EVIDENCE as EVIDENCE, JOURNEY_DEDUCTIONS as DEDUCTIONS
 import { restoreRound } from './golf.js';
 import { DESTINATIONS } from './alabama.js';
 export const SAVE_VERSION = 2;
+const detourOwners=new Map(DESTINATIONS.flatMap(d=>d.lore.map(note=>[note.id,d.index])));
+function detourAllowed(s,id) { return detourOwners.has(id)&&unlockedLocations(s).includes(detourOwners.get(id)); }
 export function newGame() {
-  return {version:2,started:false,current:0,totalRounds:0,counts:{},completed:[],wins:[],evidence:[],solved:[],responses:[],trust:0,chorus:0,rounds:{},roundMeta:{},loreSeen:[],ending:null,finalWin:false,settings:{sound:false,assisted:false},updated:Date.now()};
+  return {version:2,started:false,current:0,totalRounds:0,counts:{},completed:[],wins:[],evidence:[],solved:[],responses:[],trust:0,chorus:0,rounds:{},roundMeta:{},loreSeen:[],detourFound:[],activeDetour:null,ending:null,finalWin:false,settings:{sound:false,assisted:false},updated:Date.now()};
 }
 export function unlockedLocations(s) { return s.totalRounds>0 ? Array.from({length:11},(_,i)=>i) : [0]; }
+export function visitDetour(s,id) {
+  if(!detourAllowed(s,id))return false;
+  s.activeDetour=id;return true;
+}
+export function leaveDetour(s) {
+  const visiting=s.activeDetour!=null;
+  s.activeDetour=null;return visiting;
+}
+export function discoverDetour(s,id) {
+  if(s.activeDetour!==id||!detourAllowed(s,id))return false;
+  s.detourFound ||= [];
+  if(s.detourFound.includes(id))return false;
+  s.detourFound.push(id);
+  s.loreSeen ||= [];
+  if(!s.loreSeen.includes(id))s.loreSeen.push(id);
+  return true;
+}
 export function nextOuting(s) { return OUTINGS.find(o=>!s.completed.includes(o.id) || (o.kind!=='finale' && o.find && !s.evidence.includes(o.find.clue))) || null; }
 export function availableOuting(s,index=s.current) {
   const o=nextOuting(s);
@@ -81,6 +100,10 @@ export function validateSave(input) {
   s.finalWin=input.finalWin===true&&OUTINGS.some(o=>o.kind==='finale'&&s.completed.includes(o.id));
   s.ending=s.finalWin&&['seal','accept','expose'].includes(input.ending)&&(input.ending!=='expose'||s.trust>=2)?input.ending:null;
   s.loreSeen=Array.isArray(input.loreSeen)?[...new Set(input.loreSeen.filter(x=>typeof x==='string'&&/^[a-z0-9-]{1,80}$/.test(x)))].slice(0,200):[];
+  const allowedDetours=[...detourOwners.keys()].filter(id=>detourAllowed(s,id));
+  s.detourFound=unique(input.detourFound,allowedDetours);
+  s.activeDetour=allowedDetours.includes(input.activeDetour)?input.activeDetour:null;
+  s.loreSeen=[...new Set([...s.loreSeen,...s.detourFound])];
   for(let i=0;i<11;i++) {
     const m=input.roundMeta?.[i], r=input.rounds?.[i];
     if(!m||!r||typeof m!=='object'||typeof r!=='object'||Array.isArray(r)||JSON.stringify(r).length>30000)continue;

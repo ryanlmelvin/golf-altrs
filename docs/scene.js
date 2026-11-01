@@ -35,6 +35,11 @@ export class GolfScene {
     this.camera = new THREE.OrthographicCamera(-200, 200, 300, -300, 1, 2400);
     this.focus = point(course.start.x, course.start.y);
     this.desired = this.focus.clone();
+    this.cameraRadius = Math.hypot(330, 630);
+    this.cameraElevation = 640;
+    this.cameraYaw = Math.atan2(630, -330);
+    this.targetYaw = this.cameraYaw;
+    this.targetFlag = undefined;
     this.cameraOffset = new THREE.Vector3(-330, 640, 630);
     this.raycaster = new THREE.Raycaster();
     this.plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
@@ -185,6 +190,11 @@ export class GolfScene {
   buildTrees() {
     const rnd = random(804 + this.course.variant * 19 + this.course.index * 33);
     this.trees = new THREE.Group(); this.scene.add(this.trees);
+    this.treeOccluders = [];
+    this.treeRay = new THREE.Raycaster();
+    this.treeScreen = new THREE.Vector3();
+    this.treeHit = new THREE.Vector3();
+    this.treeCheckTime = -Infinity;
     const positions = [...this.course.trees];
     // The landscape continues beyond the playable turf. There is no miniature board edge.
     for (let i = 0; i < 22; i++) {
@@ -196,23 +206,61 @@ export class GolfScene {
     const crownGeometry = new THREE.IcosahedronGeometry(1, 1);
     for (let i = 0; i < positions.length; i++) {
       const t = positions[i], base = this.heightAt(t.x, t.y), height = t.r * (2.5 + rnd() * .7), broad = i % 5 === 1;
-      const trunk = this.mesh(new THREE.CylinderGeometry(2, 3.8, height * .58, 7), bark, t.x, t.y, base + height * .29, this.trees);
-      const mat = this.material(treeColors[i % treeColors.length]);
+      const group = new THREE.Group(); this.trees.add(group);
+      const trunkMat = bark.clone(), mat = this.material(treeColors[i % treeColors.length]).clone();
+      for (const material of [trunkMat, mat]) material.transparent = true;
+      this.mesh(new THREE.CylinderGeometry(2, 3.8, height * .58, 7), trunkMat, t.x, t.y, base + height * .29, group);
       if (broad) {
         for (let k = 0; k < 5; k++) {
           const a = k * 2.399, r = k ? t.r * .42 : 0;
-          const leaf = this.mesh(crownGeometry, mat, t.x + Math.cos(a) * r, t.y + Math.sin(a) * r, base + height * (.68 + rnd() * .15), this.trees);
+          const leaf = this.mesh(crownGeometry, mat, t.x + Math.cos(a) * r, t.y + Math.sin(a) * r, base + height * (.68 + rnd() * .15), group);
           leaf.scale.set(t.r * .8, t.r * .82, t.r * .76); leaf.rotation.set(rnd(), rnd(), rnd());
         }
       } else {
         for (let k = 0; k < 4; k++) {
-          const leaf = this.mesh(pineGeometry, mat, t.x + Math.sin(i + k) * 1.4, t.y + Math.cos(i + k) * 1.4, base + height * (.40 + k * .155), this.trees);
+          const leaf = this.mesh(pineGeometry, mat, t.x + Math.sin(i + k) * 1.4, t.y + Math.cos(i + k) * 1.4, base + height * (.40 + k * .155), group);
           leaf.scale.set(t.r * (.92 - k * .19), height * (.59 - k * .07), t.r * (.86 - k * .175)); leaf.rotation.y = k * .65 + i;
         }
       }
+      group.updateMatrixWorld(true);
+      this.treeOccluders.push({ group, bounds: new THREE.Box3().setFromObject(group), materials: [trunkMat, mat], opacity: 1, occluded: false });
       // A little warm mulch visible under the trunks grounds every tree.
       const mulch = new THREE.Mesh(new THREE.CircleGeometry(t.r * .2, 12), this.material('#8b8055'));
       mulch.rotation.x = -Math.PI / 2; mulch.position.copy(point(t.x, t.y, base + .12)); this.trees.add(mulch);
+    }
+  }
+
+  updateTreeOcclusion(time, dt) {
+    if (!this.treeOccluders?.length) return;
+    // Check the ball and its small aiming halo along the orthographic view rays. A
+    // tree behind the ball, or merely elsewhere in the foreground, stays solid.
+    if (time - this.treeCheckTime >= 80) {
+      this.treeCheckTime = time;
+      for (const tree of this.treeOccluders) tree.occluded = false;
+      if (this.ball.visible) {
+        const screen = this.treeScreen.copy(this.ball.position).project(this.camera);
+        const radius = 9.35 * this.height / (this.camera.top - this.camera.bottom) * .85;
+        const samples = [[0, 0], [radius, 0], [-radius, 0], [0, radius], [0, -radius]];
+        for (const [dx, dy] of samples) {
+          this.treeRay.setFromCamera({ x: screen.x + dx * 2 / this.width, y: screen.y + dy * 2 / this.height }, this.camera);
+          this.treeRay.far = this.treeRay.ray.origin.distanceTo(this.ball.position) - 1;
+          for (const tree of this.treeOccluders) {
+            if (tree.occluded || !this.treeRay.ray.intersectBox(tree.bounds, this.treeHit)) continue;
+            if (this.treeRay.ray.origin.distanceTo(this.treeHit) > this.treeRay.far) continue;
+            if (this.treeRay.intersectObject(tree.group, true).length) tree.occluded = true;
+          }
+        }
+      }
+    }
+    for (const tree of this.treeOccluders) {
+      const target = tree.occluded ? .16 : 1;
+      // Reveal the ball immediately, then let the foliage settle back gently.
+      tree.opacity = tree.occluded || this.reduceMotion ? target : tree.opacity + (target - tree.opacity) * (1 - Math.exp(-dt * 9));
+      if (Math.abs(tree.opacity - target) < .003) tree.opacity = target;
+      for (const material of tree.materials) {
+        material.opacity = tree.opacity;
+        material.depthWrite = tree.opacity === 1;
+      }
     }
   }
 
@@ -328,35 +376,58 @@ export class GolfScene {
     return next;
   }
 
+  trackTarget(round) {
+    // Keep the same reference hole throughout a shot, even if the ball passes
+    // another green. On reload, the saved lie is the origin of that same shot.
+    if (round.moving && this.targetFlag) return;
+    const origin = round.moving ? (round.safe || round.ball) : round.ball;
+    const signature = `${origin.x},${origin.y}:${round.holes.map(n => n === null ? 0 : 1).join('')}`;
+    if (!round.moving && signature === this.restSignature && this.targetFlag !== undefined) return;
+    this.targetFlag = this.nextFlag({ ...round, ball: origin });
+    this.restSignature = round.moving ? undefined : signature;
+    if (this.targetFlag) {
+      const dx = origin.x - this.targetFlag.x, dy = origin.y - this.targetFlag.y;
+      if (Math.hypot(dx, dy) > .01) this.targetYaw = Math.atan2(dy, dx);
+    }
+    this.targetYaw ??= this.cameraYaw;
+  }
+
   spanForRound(round) {
-    const next = this.nextFlag(round);
+    const next = this.targetFlag === undefined ? this.nextFlag(round) : this.targetFlag;
     if (!next || round.moving) return this.autoSpan || this.baseSpan;
-    const dx = next.x - round.ball.x, dy = next.y - round.ball.y;
-    const across = Math.abs(dx * .8859 + dy * .4639);
-    const up = Math.abs(dx * .3101 - dy * .5923);
-    const fit = Math.max((across + 95) / (this.width / this.height), up + 145);
-    return Math.max(this.baseSpan, Math.min(780, fit));
+    const distance = Math.hypot(next.x - round.ball.x, next.y - round.ball.y);
+    const elevation = this.cameraElevation ?? 640, radius = this.cameraRadius ?? Math.hypot(330, 630);
+    const projected = distance * elevation / Math.hypot(elevation, radius);
+    // Ball and flag share the centre line. Only the distance along the shot
+    // needs fitting; a sideways hole no longer shrinks the whole landscape.
+    return Math.max(this.baseSpan, projected * 1.3 + 120);
   }
 
   updateCamera() {
+    const yaw = this.cameraYaw ?? Math.atan2(this.cameraOffset.z, this.cameraOffset.x);
+    const radius = this.cameraRadius ?? Math.hypot(this.cameraOffset.x, this.cameraOffset.z);
+    this.cameraOffset.set(Math.cos(yaw) * radius, this.cameraElevation ?? 640, Math.sin(yaw) * radius);
     this.camera.position.copy(this.focus).add(this.cameraOffset);
     this.camera.lookAt(this.focus);
     this.camera.updateMatrixWorld();
   }
 
   frameTarget(round) {
-    const next = this.nextFlag(round), b = round.ball;
-    const dx = next ? next.x - b.x : 0, dy = next ? next.y - b.y : 0;
-    const across = Math.abs(dx * .8859 + dy * .4639), up = Math.abs(dx * .3101 - dy * .5923);
-    // In a forward shot the ball sits low in the frame; sideways shots share the frame.
-    const t = round.moving ? .12 : across > up * 1.15 ? .5 : .65;
-    return point(b.x + dx * t, b.y + dy * t, 0);
+    const next = this.targetFlag === undefined ? this.nextFlag(round) : this.targetFlag, b = round.ball;
+    const t = round.moving ? .12 : .65;
+    return point(b.x + (next ? next.x - b.x : 0) * t, b.y + (next ? next.y - b.y : 0) * t, 0);
   }
 
   recenter(round = this.round, immediate = false) {
     this.panned = false; this.round = round;
+    this.trackTarget(round);
     this.desired.copy(this.frameTarget(round));
-    if (immediate) { this.focus.copy(this.desired); this.autoSpan = this.spanForRound(round); this.setFrustum(); this.updateCamera(); }
+    if (immediate) {
+      this.cameraYaw = this.targetYaw;
+      this.focus.copy(this.desired);
+      this.autoSpan = this.spanForRound(round);
+      this.setFrustum(); this.updateCamera();
+    }
   }
 
   worldToScreen(p) {
@@ -408,10 +479,13 @@ export class GolfScene {
 
   render(round, { time = 0, drag = null, aimVisible = false } = {}) {
     this.round = round;
+    this.trackTarget(round);
     const completed = round.holes.filter(n => n !== null).length;
     if (this.completedFlags !== completed) { this.completedFlags = completed; this.renderer.shadowMap.needsUpdate = true; }
     const dt = Math.min(.06, Math.max(.001, (time - this.lastTime) / 1000 || .016)); this.lastTime = time;
     if (!this.panned && !drag) {
+      const turn = Math.atan2(Math.sin(this.targetYaw - this.cameraYaw), Math.cos(this.targetYaw - this.cameraYaw));
+      this.cameraYaw += turn * (this.reduceMotion ? 1 : 1 - Math.exp(-dt * 4.5));
       const span = this.spanForRound(round);
       this.autoSpan = THREE.MathUtils.lerp(this.autoSpan, span, this.reduceMotion ? 1 : 1 - Math.exp(-dt * 2.8));
       this.setFrustum();
@@ -430,6 +504,8 @@ export class GolfScene {
     this.ballRing.scale.setScalar(1 + (this.reduceMotion ? 0 : Math.sin(time / 700) * .06));
     for (const f of this.flags) {
       f.group.visible = round.holes[f.id] === null;
+      // Keep the small pennant legible as the view moves around the green.
+      f.flag.rotation.y = Math.atan2(this.camera.position.x - f.group.position.x, this.camera.position.z - f.group.position.z) + .12;
       if (!f.group.visible || this.reduceMotion) continue;
       const pos = f.flag.geometry.attributes.position;
       for (let i = 0; i < pos.count; i++) {
@@ -439,6 +515,7 @@ export class GolfScene {
       pos.needsUpdate = true;
     }
     this.updateAim(round, drag ? !drag.cancelled : aimVisible);
+    this.updateTreeOcclusion(time, dt);
     this.renderer.render(this.scene, this.camera);
   }
 

@@ -188,6 +188,8 @@ function cameraScene(course, round, width, height) {
     camera: new THREE.OrthographicCamera(-200, 200, 300, -300, 1, 2400),
     focus: new THREE.Vector3(), desired: new THREE.Vector3(),
     cameraOffset: new THREE.Vector3(-330, 640, 630),
+    cameraRadius: Math.hypot(330, 630), cameraElevation: 640,
+    cameraYaw: Math.atan2(630, -330), targetYaw: Math.atan2(630, -330), targetFlag: null,
     raycaster: new THREE.Raycaster(), plane: new THREE.Plane(new THREE.Vector3(0, 1, 0), 0),
     rayPoint: new THREE.Vector3(), scratch: new THREE.Vector3(),
   });
@@ -221,10 +223,11 @@ test('the default phone camera frames a shot instead of fitting the whole course
   }
 });
 
-test('pulling back opposite the opening cup gives a playable shot at phone and desktop zoom levels', () => {
-  for (const [width, height, zoom] of [[390, 844, 1], [390, 844, 1.4], [1280, 800, 1]]) {
+test('pulling back still shoots accurately when the camera faces different directions', () => {
+  for (let variant = 0; variant < 4; variant++) for (const [width, height, zoom] of [[390, 844, 1], [390, 844, 1.4], [1280, 800, 1]]) {
     const { g, actions, event } = interactiveGame();
-    const course = createCourse();
+    const course = createCourse(0, variant);
+    g.round = makeRound(0, variant);
     g.scene = cameraScene(course, g.round, width, height); g.scene.zoom(zoom);
     const lie = g.round.ball, cup = course.flags[0];
     const toCup = Math.hypot(cup.x - lie.x, cup.y - lie.y);
@@ -235,4 +238,41 @@ test('pulling back opposite the opening cup gives a playable shot at phone and d
     assert.equal(actions.swings, 1);
     assert.equal(g.round.holes[0], 1, `pull-back targeting works at ${width}×${height}, zoom ${zoom}`);
   }
+});
+
+
+test('the isometric camera lines up behind the ball and active flag throughout every course', () => {
+  for (let index = 0; index < 6; index++) for (let variant = 0; variant < 4; variant++) for (const [width, height] of [[390, 844], [844, 390]]) {
+    const course = createCourse(index, variant), round = makeRound(index, variant);
+    const scene = cameraScene(course, round, width, height);
+    for (let hole = 0; hole < 5; hole++) {
+      scene.recenter(round, true);
+      const flag = scene.targetFlag, ballScreen = scene.worldToScreen(round.ball), flagScreen = scene.worldToScreen(flag);
+      const context = `course ${index}, variant ${variant}, hole ${hole + 1}, ${width}×${height}`;
+      assert.ok(Math.abs(ballScreen.x - flagScreen.x) < .01, `ball and flag share the shot line: ${context}`);
+      assert.ok(ballScreen.y > flagScreen.y, `the camera is behind the ball, facing the flag: ${context}`);
+      assert.ok(ballScreen.x > 0 && ballScreen.x < width && ballScreen.y > 0 && ballScreen.y < height, `ball remains framed: ${context}`);
+      assert.ok(flagScreen.x > 0 && flagScreen.x < width && flagScreen.y > 0 && flagScreen.y < height, `flag remains framed: ${context}`);
+      // Completing a cup uses the real transition to the next lie and target.
+      Object.assign(round.ball, { x: flag.x - 7, y: flag.y, vx: 1, vy: 0, air: 0 });
+      round.moving = true; round.strokes++;
+      const event = stepRound(round, course);
+      assert.ok(event.type === 'hole' || event.type === 'complete');
+    }
+  }
+});
+
+test('the camera keeps its reference flag in flight, including a resumed shot', () => {
+  const course = createCourse(), round = makeRound();
+  const scene = cameraScene(course, round, 390, 844), originalFlag = scene.targetFlag;
+  const otherFlag = course.flags[3];
+  round.moving = true;
+  Object.assign(round.ball, { x: otherFlag.x - 30, y: otherFlag.y + 10 });
+  scene.trackTarget(round);
+  assert.equal(scene.targetFlag.id, originalFlag.id, 'passing another flag cannot turn the camera mid-shot');
+  const resumed = cameraScene(course, structuredClone(round), 390, 844);
+  assert.equal(resumed.targetFlag.id, originalFlag.id, 'a resumed shot frames the flag from its saved origin');
+  round.moving = false;
+  scene.trackTarget(round);
+  assert.equal(scene.targetFlag.id, otherFlag.id, 'the next shot can face a newly nearer flag');
 });

@@ -66,7 +66,7 @@ for (const path of ['/', '/golf-altrs/']) {
     const worker = workerHarness(path);
     await worker.lifecycle('install');
     assert.equal(worker.skipped, false, 'an update must not replace an active game mid-round');
-    for (const file of ['', 'index.html', 'app.js', 'state.js', 'story.js', 'golf.js', 'scene.js', 'vendor/three.module.js', 'vendor/three.core.js', 'vendor/THREE-LICENSE.txt', 'styles.css', 'manifest.webmanifest']) {
+    for (const file of ['', 'index.html', 'app.js', 'state.js', 'story.js', 'golf.js', 'scene.js', 'detours.js', 'detour-scene.js', 'vendor/three.module.js', 'vendor/three.core.js', 'vendor/THREE-LICENSE.txt', 'styles.css', 'manifest.webmanifest']) {
       const url = `https://example.test${path}${file}`;
       assert.ok(worker.writes.includes(url), `precache includes ${file || 'launch URL'}`);
       const response = await worker.fetch(new Request(url + '?launch=installed'));
@@ -145,7 +145,7 @@ test('preview serves the project path and refuses filesystem escape', { timeout:
   const head = await fetch(origin + '/golf-altrs/assets/icon-512.png', { method: 'HEAD' });
   assert.equal(head.headers.get('content-type'), 'image/png');
   assert.equal(await head.text(), '');
-  for (const file of ['scene.js', 'vendor/three.module.js', 'vendor/three.core.js']) {
+  for (const file of ['scene.js', 'detours.js', 'detour-scene.js', 'vendor/three.module.js', 'vendor/three.core.js']) {
     const module = await fetch(origin + '/golf-altrs/' + file);
     assert.equal(module.status, 200, file);
     assert.equal(module.headers.get('content-type'), 'text/javascript; charset=utf-8', file);
