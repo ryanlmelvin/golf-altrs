@@ -1,5 +1,5 @@
 /* Bump VERSION whenever a shipped asset changes. New workers wait for open games to close. */
-const VERSION = '2.1.0';
+const VERSION = '2.2.0';
 const SCOPE = new URL(self.registration.scope);
 const PREFIX = `pension-plan:${SCOPE.pathname}:`;
 const CACHE = PREFIX + VERSION;
@@ -12,6 +12,10 @@ const ASSETS = [
   "./journey.js",
   "./alabama.js",
   "./golf.js",
+  "./scene.js",
+  "./vendor/three.module.js",
+  "./vendor/three.core.js",
+  "./vendor/THREE-LICENSE.txt",
   "./state.js",
   "./manifest.webmanifest",
   "./assets/icon.svg",

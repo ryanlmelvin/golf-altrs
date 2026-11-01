@@ -10,17 +10,17 @@ This edition includes **11 destinations**, **33 optional local stories**, and an
 
 ## Play
 
-The game opens directly on a full-screen, playable course. Pull back from the ball and release. Finish five flags in any order. **Shot controls** opens the optional power slider and **Swing** button. Keyboard controls and assistance are in **Menu → Settings**.
+The game opens directly on a full-screen, playable course. Drag from the ball to place your shot, then release. Bring the landing marker back to the ball to cancel. Drag the ground to look around; pinch or scroll to zoom. Finish five flags in any order. **Shot controls** opens the optional power slider and **Swing** button. Keyboard controls and assistance are in **Menu → Settings**.
 
 The small menu opens **Explore Alabama**, **Clubhouse**, and the notebook when there is something to keep. After the opening round, all 11 destinations are available. Clubhouse conversations are optional; local stories rotate as you play more rounds at a destination. Source links accompany the real-place notes.
 
-Portrait and landscape layouts keep all five flags visible without scrolling or stretching the course. Touch controls have at least 44-pixel targets. Rotating the screen preserves the ball's position and the current round.
+The close, angled 3D camera follows the ball and frames the next shot. Explore the rest of the course by panning, then use the recenter button to return to your ball. Touch controls have at least 44-pixel targets. Rotating the screen preserves the ball's position and the current round.
 
 Follow reception’s occasional suggestions if you want to continue the story, or choose your own route. Later wagers require a strictly lower score. A loss leaves room for another try. There is no timer, required reading list, or deadline to go home.
 
 ## Run locally
 
-Node.js 20 or newer. No dependencies or build step.
+Node.js 20 or newer. No installation or build step.
 
 ```sh
 npm start
@@ -38,7 +38,7 @@ Every game asset is local and cached for offline play. Source links open externa
 
 ## Publish on GitHub Pages
 
-Everything needed to play is in `docs/`. Use **Settings → Pages → Deploy from a branch**, select **main** and **/docs**. Relative paths support the project URL without changes. This is a fully static PWA: no backend, account system, runtime dependencies, or paid service.
+Everything needed to play is in `docs/`. Use **Settings → Pages → Deploy from a branch**, select **main** and **/docs**. Relative paths support the project URL without changes. This is a fully static PWA: no backend, account system, external CDN, or paid service. The 3D view uses a local copy of Three.js 0.187.0 under its [MIT license](docs/vendor/THREE-LICENSE.txt).
 
 ## Verify
 
@@ -56,7 +56,8 @@ Checks cover JavaScript syntax, the offline asset list, golf physics and resumab
 | `docs/journey.js` | The optional first arc, discoveries, and deductions |
 | `docs/alabama.js` | Eleven destinations, locals, and 33 source-linked place notes |
 | `docs/story.js` | Shared story endings, crowd details, and research sources |
-| `docs/golf.js` | Canvas golf, course variations, finds, and terrain physics |
+| `docs/golf.js` | Golf input, course variations, finds, and terrain physics |
+| `docs/scene.js` | 3D course art, lighting, and ball-following camera |
 | `docs/sw.js` | Offline asset cache |
 | `scripts/serve.mjs` | Local static preview |
 

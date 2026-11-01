@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { cameraForViewport, worldToScreen, screenToWorld, ballTouchRadius, GolfGame, createCourse, makeRound, restoreRound, launchShot, stepRound, terrainAt } from '../docs/golf.js';
+import { GolfGame, createCourse, makeRound, restoreRound, launchShot, stepRound, terrainAt } from '../docs/golf.js';
 
 function settle(round, course) { let event; for (let i = 0; i < 1500 && round.moving; i++) event = stepRound(round, course) || event; assert.equal(round.moving, false, 'shots must settle'); return event; }
 
@@ -92,31 +92,140 @@ test('a findable appears after enough flags, survives a reload, and can only be 
 });
 
 
-test('the entire course fits portrait, landscape, and short screens without distortion', () => {
-  for (const [width,height] of [[390,844],[320,568],[844,390],[1024,768],[1800,360]]) {
-    const camera=cameraForViewport(width,height);
-    for(const corner of [{x:0,y:0},{x:900,y:0},{x:0,y:680},{x:900,y:680}]) {
-      const p=worldToScreen(corner,camera);
-      assert.ok(p.x>=0 && p.x<=width && p.y>=0 && p.y<=height, `${width}×${height} keeps the whole course`);
+function interactiveGame() {
+  const g = Object.create(GolfGame.prototype);
+  g.round = makeRound(); g.options = {}; g.pointers = new Map(); g.gesture = null; g.pinch = null; g.drag = null;
+  const captures = new Set();
+  g.canvas = { dataset: {}, focus() {}, getBoundingClientRect: () => ({ left: 0, top: 0 }), setPointerCapture: id => captures.add(id), hasPointerCapture: id => captures.has(id), releasePointerCapture: id => captures.delete(id) };
+  const actions = { pans: [], zooms: [], swings: 0 };
+  // A fixed projection isolates gesture decisions from the WebGL renderer.
+  g.scene = { worldToScreen: p => ({ ...p }), screenToWorld: p => ({ ...p }), pan: (x, y) => actions.pans.push([x, y]), zoom: n => actions.zooms.push(n) };
+  g.setShotControls = () => {}; g.updateUI = () => {}; g.persist = () => {};
+  g.swing = () => { actions.swings++; launchShot(g.round); };
+  const event = (id, x, y) => ({ pointerId: id, clientX: x, clientY: y, button: 0, preventDefault() {} });
+  return { g, actions, event };
+}
+
+test('dragging the course pans without spending a stroke or changing the aim', () => {
+  const { g, actions, event } = interactiveGame();
+  const before = structuredClone(g.round);
+  g.pointerDown(event(1, 400, 300)); g.pointerMove(event(1, 425, 320)); g.pointerUp(event(1, 425, 320));
+  assert.deepEqual(actions.pans, [[25, 20]]);
+  assert.equal(actions.swings, 0);
+  assert.deepEqual(g.round, before);
+});
+
+test('dragging a landing spot directly from the ball releases one shot toward that spot', () => {
+  const { g, actions, event } = interactiveGame();
+  const { x, y } = g.round.ball;
+  g.pointerDown(event(1, x + 24, y));
+  assert.equal(g.gesture.kind, 'shot', 'a touch within 24 CSS pixels selects the ball');
+  g.pointerMove(event(1, x - 36, y + 60)); g.pointerUp(event(1, x - 36, y + 60));
+  g.pointerUp(event(1, x - 36, y + 60));
+  assert.equal(actions.swings, 1);
+  assert.equal(g.round.strokes, 1);
+  assert.equal(g.round.moving, true);
+  assert.ok(g.round.ball.vx < 0 && g.round.ball.vy > 0, 'the ball travels toward the dragged spot, not away from it');
+  assert.ok(Math.abs(g.round.angle - Math.atan2(60, -36)) < 1e-8);
+  assert.equal(actions.pans.length, 0);
+});
+
+test('dragging the landing spot back onto the ball cancels without spending a stroke', () => {
+  const { g, actions, event } = interactiveGame();
+  const before = structuredClone(g.round), { x, y } = g.round.ball;
+  g.pointerDown(event(1, x, y));
+  g.pointerMove(event(1, x + 130, y - 90));
+  assert.equal(g.drag.cancelled, false);
+  g.pointerMove(event(1, x + 8, y - 5));
+  assert.equal(g.drag.cancelled, true, 'the landing marker disappears over the ball');
+  g.pointerUp(event(1, x + 8, y - 5));
+  assert.equal(actions.swings, 0);
+  assert.deepEqual(g.round, before, 'cancelling also restores the original aim and power');
+});
+
+test('release over the ball cancels even when the last move event was far away', () => {
+  const { g, actions, event } = interactiveGame();
+  const { x, y } = g.round.ball;
+  g.pointerDown(event(1, x, y)); g.pointerMove(event(1, x + 150, y));
+  g.pointerUp(event(1, x, y));
+  assert.equal(actions.swings, 0); assert.equal(g.round.strokes, 0);
+});
+
+test('a second finger turns a pending shot into a pinch without accidentally firing', () => {
+  const { g, actions, event } = interactiveGame();
+  const { x, y } = g.round.ball;
+  g.pointerDown(event(1, x, y)); g.pointerMove(event(1, x - 20, y + 20));
+  g.pointerDown(event(2, x + 80, y + 20));
+  assert.equal(g.drag, null);
+  g.pointerMove(event(2, x + 100, y + 20));
+  g.pointerUp(event(2, x + 100, y + 20)); g.pointerUp(event(1, x - 20, y + 20));
+  assert.equal(actions.swings, 0);
+  assert.equal(g.round.strokes, 0);
+  assert.ok(actions.zooms[0] > 1);
+});
+
+test('an interrupted touch never fires a stroke', () => {
+  const { g, actions, event } = interactiveGame();
+  const { x, y } = g.round.ball;
+  g.pointerDown(event(1, x, y)); g.pointerMove(event(1, x - 50, y));
+  g.pointerCancel(event(1, x - 50, y)); g.pointerUp(event(1, x - 50, y));
+  assert.equal(actions.swings, 0); assert.equal(g.pointers.size, 0);
+});
+
+// Exercise the actual perspective math without requiring a GPU in the test runner.
+// WebGL construction and rendering are covered by the browser play-through.
+import * as THREE from '../docs/vendor/three.module.js';
+import { GolfScene } from '../docs/scene.js';
+function cameraScene(course, round, width, height) {
+  const scene = Object.create(GolfScene.prototype);
+  Object.assign(scene, {
+    course, round, zoomLevel: 1, panned: false,
+    renderer: { setSize() {} },
+    camera: new THREE.OrthographicCamera(-200, 200, 300, -300, 1, 2400),
+    focus: new THREE.Vector3(), desired: new THREE.Vector3(),
+    cameraOffset: new THREE.Vector3(-330, 640, 630),
+    raycaster: new THREE.Raycaster(), plane: new THREE.Plane(new THREE.Vector3(0, 1, 0), 0),
+    rayPoint: new THREE.Vector3(), scratch: new THREE.Vector3(),
+  });
+  scene.resize(width, height); scene.recenter(round, true);
+  return scene;
+}
+
+test('touch projection stays accurate on raised terrain after resizing, panning, and zooming', () => {
+  const course = createCourse(2, 3), round = makeRound(2, 3), saved = JSON.stringify(round);
+  for (const [width, height] of [[390, 844], [320, 568], [844, 390], [1280, 800]]) {
+    const scene = cameraScene(course, round, width, height);
+    scene.pan(35, -20); scene.zoom(1.35);
+    for (const point of [course.start, ...course.flags, ...course.sand, ...course.water]) {
+      const restored = scene.screenToWorld(scene.worldToScreen(point));
+      assert.ok(Math.hypot(restored.x - point.x, restored.y - point.y) < .05, `touch must match terrain at ${width}×${height}`);
     }
-    const origin=worldToScreen({x:450,y:340},camera);
-    const horizontal=worldToScreen({x:550,y:340},camera);
-    const vertical=worldToScreen({x:450,y:440},camera);
-    assert.ok(Math.abs(Math.hypot(horizontal.x-origin.x,horizontal.y-origin.y)-Math.hypot(vertical.x-origin.x,vertical.y-origin.y))<1e-8,'circles and distances retain their proportions');
-    for(let i=0;i<6;i++)for(const point of [createCourse(i).start,...createCourse(i).flags]) {
-      const screen=worldToScreen(point,camera), restored=screenToWorld(screen,camera);
-      assert.ok(Math.abs(restored.x-point.x)<1e-8 && Math.abs(restored.y-point.y)<1e-8, 'touch lands at the rendered lie');
-    }
-    assert.ok(ballTouchRadius(camera)*camera.scale*2 >= 44, 'ball touch target is at least 44 CSS pixels');
+    assert.equal(JSON.stringify(round), saved, 'looking around cannot move the saved ball');
   }
 });
 
-test('orientation changes preserve the saved lie and dragging beyond the screen', () => {
-  const round=makeRound(2,3), before=JSON.stringify(round);
-  const camera=cameraForViewport(390,844), rotated=cameraForViewport(844,390);
-  const lie=round.ball, p=worldToScreen(lie,camera), p2=worldToScreen(lie,rotated);
-  assert.notEqual(p.x,p2.x);
-  const capture={x:-80,y:880}, world=screenToWorld(capture,camera), screen=worldToScreen(world,camera);
-  assert.ok(Math.abs(screen.x-capture.x)<1e-8 && Math.abs(screen.y-capture.y)<1e-8,'captured drags stay accurate outside the canvas');
-  assert.equal(JSON.stringify(round),before,'turning the phone cannot change physics or saved position');
+test('the default phone camera frames a shot instead of fitting the whole course', () => {
+  for (let index = 0; index < 6; index++) for (let variant = 0; variant < 4; variant++) {
+    const course = createCourse(index, variant), round = makeRound(index, variant);
+    const scene = cameraScene(course, round, 390, 844);
+    const visible = p => { const s = scene.worldToScreen(p); return s.x >= 0 && s.x <= 390 && s.y >= 0 && s.y <= 844; };
+    assert.ok(visible(round.ball), 'the current lie is visible');
+    assert.ok(course.flags.filter(visible).length < 5, 'the course is explored through the camera');
+    scene.pan(100, 100); assert.equal(scene.panned, true);
+    scene.recenter(round, true); assert.equal(scene.panned, false);
+    assert.ok(visible(round.ball), 'return to ball restores the shot');
+  }
+});
+
+test('a direct drag to the opening cup gives a playable shot at phone and desktop zoom levels', () => {
+  for (const [width, height, zoom] of [[390, 844, 1], [390, 844, 1.4], [1280, 800, 1]]) {
+    const { g, actions, event } = interactiveGame();
+    const course = createCourse();
+    g.scene = cameraScene(course, g.round, width, height); g.scene.zoom(zoom);
+    const ball = g.scene.worldToScreen(g.round.ball), cup = g.scene.worldToScreen(course.flags[0]);
+    g.pointerDown(event(1, ball.x, ball.y)); g.pointerMove(event(1, cup.x, cup.y)); g.pointerUp(event(1, cup.x, cup.y));
+    settle(g.round, course);
+    assert.equal(actions.swings, 1);
+    assert.equal(g.round.holes[0], 1, `direct targeting works at ${width}×${height}, zoom ${zoom}`);
+  }
 });

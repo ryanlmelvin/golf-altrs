@@ -1,6 +1,6 @@
 import { readdir, readFile, stat } from 'node:fs/promises';
 import { spawnSync } from 'node:child_process';
-import { dirname, resolve, sep } from 'node:path';
+import { dirname, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -27,8 +27,32 @@ for (const icon of manifest.icons) {
 for (const required of ['./', './index.html', './styles.css', './app.js', './story.js', './golf.js', './state.js', './manifest.webmanifest']) {
   if (!assets.includes(required)) { console.error(`Missing required offline entry: ${required}`); failures++; }
 }
+// Walk real module dependencies, including vendored code. A missing transitive
+// dependency otherwise works online and fails only after the game is installed.
+const checkedModules = new Set();
+async function checkModule(file) {
+  if (checkedModules.has(file)) return;
+  checkedModules.add(file);
+  const asset = './' + relative(docs, file).split(sep).join('/');
+  if (!file.startsWith(docs + sep) || !assets.includes(asset)) {
+    console.error(`Module is not cached inside the project: ${asset}`); failures++;
+    return;
+  }
+  const source = await readFile(file, 'utf8').catch(() => null);
+  if (source === null) return; // The asset existence check already reports this.
+  const imports = /^\s*(?:import\s+(?:[\w$*{},\s]+\s+from\s*)?|export\s+(?:\*|\{[^}]*\})\s+from\s*)(['"])([^'"]+)\1/gm;
+  for (const match of source.matchAll(imports)) {
+    const specifier = match[2];
+    if (!specifier.startsWith('./') && !specifier.startsWith('../')) {
+      console.error(`Module must use a local relative import: ${asset} → ${specifier}`); failures++;
+      continue;
+    }
+    await checkModule(resolve(dirname(file), specifier));
+  }
+}
+await checkModule(resolve(docs, 'app.js'));
 if (!manifest.start_url.startsWith('./') || !manifest.scope.startsWith('./')) {
   console.error('Manifest must use relative paths for GitHub Pages.'); failures++;
 }
 if (failures) process.exitCode = 1;
-else console.log(`JavaScript syntax and ${assets.length} offline assets verified.`);
+else console.log(`JavaScript syntax, ${assets.length} offline assets, and ${checkedModules.size} local modules verified.`);
