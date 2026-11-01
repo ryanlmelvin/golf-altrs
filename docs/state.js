@@ -6,7 +6,7 @@ export function newGame() {
   return {version:2,started:false,current:0,totalRounds:0,counts:{},completed:[],wins:[],evidence:[],solved:[],responses:[],trust:0,chorus:0,rounds:{},roundMeta:{},loreSeen:[],ending:null,finalWin:false,settings:{sound:false,assisted:false},updated:Date.now()};
 }
 export function unlockedLocations(s) { return s.totalRounds>0 ? Array.from({length:11},(_,i)=>i) : [0]; }
-export function nextOuting(s) { return OUTINGS.find(o=>!s.completed.includes(o.id) || (o.find && !s.evidence.includes(o.find.clue))) || null; }
+export function nextOuting(s) { return OUTINGS.find(o=>!s.completed.includes(o.id) || (o.kind!=='finale' && o.find && !s.evidence.includes(o.find.clue))) || null; }
 export function availableOuting(s,index=s.current) {
   const o=nextOuting(s);
   if(!o || o.location!==index) return null;

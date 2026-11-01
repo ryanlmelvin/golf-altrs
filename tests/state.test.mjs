@@ -138,3 +138,11 @@ test('save validation rejects foreign files and discards invalid fields', () => 
   assert.deepEqual(s.wins, []); assert.deepEqual(s.evidence, []); assert.deepEqual(s.rounds, {}); assert.deepEqual(s.completed, []);
   assert.notEqual(storageKey('/golf-altrs/'), storageKey('/debrief-corn-game/')); assert.equal(storageKey('/golf-altrs/index.html'), storageKey('/golf-altrs/'));
 });
+
+test('an uncollected final-course souvenir does not restart the resolved case', () => {
+  const s=newGame();
+  s.completed=OUTINGS.map(o=>o.id);
+  s.evidence=EVIDENCE.map(e=>e.id).filter(id=>id!=='architecture');
+  s.finalWin=true;
+  assert.equal(nextOuting(s),null);
+});
