@@ -115,22 +115,26 @@ test('dragging the course pans without spending a stroke or changing the aim', (
   assert.deepEqual(g.round, before);
 });
 
-test('dragging a landing spot directly from the ball releases one shot toward that spot', () => {
+test('pulling back from the ball releases one shot in the opposite direction', () => {
   const { g, actions, event } = interactiveGame();
   const { x, y } = g.round.ball;
   g.pointerDown(event(1, x + 24, y));
   assert.equal(g.gesture.kind, 'shot', 'a touch within 24 CSS pixels selects the ball');
-  g.pointerMove(event(1, x - 36, y + 60)); g.pointerUp(event(1, x - 36, y + 60));
+  g.pointerMove(event(1, x - 18, y + 30));
+  const shortPullPower = g.round.power;
+  g.pointerMove(event(1, x - 36, y + 60));
+  assert.ok(g.round.power > shortPullPower, 'pulling farther gives more power');
+  g.pointerUp(event(1, x - 36, y + 60));
   g.pointerUp(event(1, x - 36, y + 60));
   assert.equal(actions.swings, 1);
   assert.equal(g.round.strokes, 1);
   assert.equal(g.round.moving, true);
-  assert.ok(g.round.ball.vx < 0 && g.round.ball.vy > 0, 'the ball travels toward the dragged spot, not away from it');
-  assert.ok(Math.abs(g.round.angle - Math.atan2(60, -36)) < 1e-8);
+  assert.ok(g.round.ball.vx > 0 && g.round.ball.vy < 0, 'the ball travels opposite the pull');
+  assert.ok(Math.abs(g.round.angle - Math.atan2(-60, 36)) < 1e-8);
   assert.equal(actions.pans.length, 0);
 });
 
-test('dragging the landing spot back onto the ball cancels without spending a stroke', () => {
+test('bringing the pull back onto the ball cancels without spending a stroke', () => {
   const { g, actions, event } = interactiveGame();
   const before = structuredClone(g.round), { x, y } = g.round.ball;
   g.pointerDown(event(1, x, y));
@@ -217,15 +221,18 @@ test('the default phone camera frames a shot instead of fitting the whole course
   }
 });
 
-test('a direct drag to the opening cup gives a playable shot at phone and desktop zoom levels', () => {
+test('pulling back opposite the opening cup gives a playable shot at phone and desktop zoom levels', () => {
   for (const [width, height, zoom] of [[390, 844, 1], [390, 844, 1.4], [1280, 800, 1]]) {
     const { g, actions, event } = interactiveGame();
     const course = createCourse();
     g.scene = cameraScene(course, g.round, width, height); g.scene.zoom(zoom);
-    const ball = g.scene.worldToScreen(g.round.ball), cup = g.scene.worldToScreen(course.flags[0]);
-    g.pointerDown(event(1, ball.x, ball.y)); g.pointerMove(event(1, cup.x, cup.y)); g.pointerUp(event(1, cup.x, cup.y));
+    const lie = g.round.ball, cup = course.flags[0];
+    const toCup = Math.hypot(cup.x - lie.x, cup.y - lie.y);
+    const pull = g.scene.worldToScreen({ x: lie.x - (cup.x - lie.x) / toCup * 64.5, y: lie.y - (cup.y - lie.y) / toCup * 64.5 });
+    const ball = g.scene.worldToScreen(lie);
+    g.pointerDown(event(1, ball.x, ball.y)); g.pointerMove(event(1, pull.x, pull.y)); g.pointerUp(event(1, pull.x, pull.y));
     settle(g.round, course);
     assert.equal(actions.swings, 1);
-    assert.equal(g.round.holes[0], 1, `direct targeting works at ${width}×${height}, zoom ${zoom}`);
+    assert.equal(g.round.holes[0], 1, `pull-back targeting works at ${width}×${height}, zoom ${zoom}`);
   }
 });

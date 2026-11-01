@@ -10,7 +10,7 @@ This edition includes **11 destinations**, **33 optional local stories**, and an
 
 ## Play
 
-The game opens directly on a full-screen, playable course. Drag from the ball to place your shot, then release. Bring the landing marker back to the ball to cancel. Drag the ground to look around; pinch or scroll to zoom. Finish five flags in any order. **Shot controls** opens the optional power slider and **Swing** button. Keyboard controls and assistance are in **Menu → Settings**.
+The game opens directly on a full-screen, playable course. Pull back from the ball, opposite the direction of your shot, then release. Return to the ball before releasing to cancel. Drag the ground to look around; pinch or scroll to zoom. Finish five flags in any order. **Shot controls** opens the optional power slider and **Swing** button. Keyboard controls and assistance are in **Menu → Settings**.
 
 The small menu opens **Explore Alabama**, **Clubhouse**, and the notebook when there is something to keep. After the opening round, all 11 destinations are available. Clubhouse conversations are optional; local stories rotate as you play more rounds at a destination. Source links accompany the real-place notes.
 
