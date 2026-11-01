@@ -10,9 +10,11 @@ This edition includes **11 destinations**, **33 optional local stories**, and an
 
 ## Play
 
-Pull back from the ball and release. Finish five flags in any order. You can also tap a direction, set the power, and choose **Swing**. Keyboard controls and optional assistance are in the menu.
+The game opens directly on a full-screen, playable course. Pull back from the ball and release. Finish five flags in any order. **Shot controls** opens the optional power slider and **Swing** button. Keyboard controls and assistance are in **Menu → Settings**.
 
-After the opening round, all 11 destinations are available from **Alabama**. The **19th hole** offers optional conversations. Local stories rotate as you play more rounds at a destination. Anything worth keeping goes in the notebook; source links accompany the real-place notes.
+The small menu opens **Explore Alabama**, **Clubhouse**, and the notebook when there is something to keep. After the opening round, all 11 destinations are available. Clubhouse conversations are optional; local stories rotate as you play more rounds at a destination. Source links accompany the real-place notes.
+
+Portrait and landscape layouts keep all five flags visible without scrolling or stretching the course. Touch controls have at least 44-pixel targets. Rotating the screen preserves the ball's position and the current round.
 
 Follow reception’s occasional suggestions if you want to continue the story, or choose your own route. Later wagers require a strictly lower score. A loss leaves room for another try. There is no timer, required reading list, or deadline to go home.
 
@@ -30,7 +32,7 @@ Open [localhost:4320](http://localhost:4320). The server also serves [the GitHub
 
 Open online once to cache the game. Compatible browsers offer **Install** or **Add to Home Screen**; on iPhone and iPad, use Safari’s Share menu. Installation controls depend on the browser.
 
-Progress, rounds in play, discoveries, and settings stay in this browser on this device. Use **Menu → Save backup** and **Open backup** to transfer progress or keep a separate copy. Installed apps may have their own storage. Clearing website data removes local progress. Saves and caches are scoped to the project path, independently of other games on the same GitHub Pages domain.
+Progress, rounds in play, discoveries, and settings stay in this browser on this device. Use **Menu → Settings → Save backup** and **Open backup** to transfer progress or keep a separate copy. Installed apps may have their own storage. Clearing website data removes local progress. Saves and caches are scoped to the project path, independently of other games on the same GitHub Pages domain.
 
 Every game asset is local and cached for offline play. Source links open external reading only when selected. Updates wait until existing game windows close. Increment `VERSION` in `docs/sw.js` whenever shipped assets change.
 

@@ -14,12 +14,13 @@ export function availableOuting(s,index=s.current) {
   if(o.requiresDeduction && !s.solved.includes(o.requiresDeduction)) return null;
   return o;
 }
-export function roundContext(s,index=s.current) {
-  if(s.roundMeta[index]) return s.roundMeta[index];
+function freshRoundContext(s,index) {
   const o=availableOuting(s,index);
   const missed=OUTINGS.find(x=>x.location===index && s.completed.includes(x.id) && x.find && !s.evidence.includes(x.find.clue));
-  return {outingId:o?.id||null,variant:s.counts[index]||0,settled:false,won:false,findId:missed?.id || (o?.find?o.id:null)};
+  const currentFind=o?.find&&!s.evidence.includes(o.find.clue)?o.id:null;
+  return {outingId:o?.id||null,variant:s.counts[index]||0,settled:false,won:false,findId:missed?.id || currentFind};
 }
+export function roundContext(s,index=s.current) { return s.roundMeta[index] || freshRoundContext(s,index); }
 export function roundOuting(s,index=s.current) { const id=roundContext(s,index).outingId; return OUTINGS.find(o=>o.id===id)||null; }
 export function roundFind(s,index=s.current) {
   const id=roundContext(s,index).findId;const o=OUTINGS.find(o=>o.id===id);
@@ -27,6 +28,24 @@ export function roundFind(s,index=s.current) {
   return {...o.find,afterFlags:s.completed.includes(o.id)?0:o.find.afterFlags};
 }
 export function startRound(s,index=s.current) { s.roundMeta[index]={...roundContext(s,index)};s.started=true; }
+export function prepareRound(s,index=s.current) {
+  const round=s.rounds[index],meta=s.roundMeta[index];
+  if(!round||!meta) {
+    startRound(s,index);
+    return s.roundMeta[index];
+  }
+  const untouched=round.strokes===0 && Array.isArray(round.holes) && round.holes.length===5 && round.holes.every(n=>n===null) && !round.moving && !round.finished && !meta.settled;
+  if(untouched) {
+    const next=freshRoundContext(s,index);
+    if(meta.outingId!==next.outingId||meta.findId!==next.findId) {
+      // An unplayed visit must not hide a story that became available elsewhere.
+      // Keep the saved layout, ball, club, and aim; only the encounter changes.
+      s.roundMeta[index]={...meta,outingId:next.outingId,findId:next.findId};
+    }
+  }
+  s.started=true;
+  return s.roundMeta[index];
+}
 export function clearRound(s,index=s.current) { delete s.rounds[index];delete s.roundMeta[index]; }
 export function travel(s,index) { if(!unlockedLocations(s).includes(index))return false;if(index!==s.current)s.chorus=s.solved.length;s.current=index;return true; }
 export function collect(s,id) {if(!id||!EVIDENCE.some(e=>e.id===id)||s.evidence.includes(id))return false;s.evidence.push(id);return true;}

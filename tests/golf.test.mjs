@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { GolfGame, createCourse, makeRound, restoreRound, launchShot, stepRound, terrainAt } from '../docs/golf.js';
+import { cameraForViewport, worldToScreen, screenToWorld, ballTouchRadius, GolfGame, createCourse, makeRound, restoreRound, launchShot, stepRound, terrainAt } from '../docs/golf.js';
 
 function settle(round, course) { let event; for (let i = 0; i < 1500 && round.moving; i++) event = stepRound(round, course) || event; assert.equal(round.moving, false, 'shots must settle'); return event; }
 
@@ -89,4 +89,34 @@ test('a findable appears after enough flags, survives a reload, and can only be 
   assert.deepEqual(found, ['invoice']); assert.equal(g.findableAvailable(), false);
   g.setFindableFound(false); assert.equal(g.findableAvailable(), true);
   g.setFindableFound(); assert.equal(g.findableAvailable(), false);
+});
+
+
+test('the entire course fits portrait, landscape, and short screens without distortion', () => {
+  for (const [width,height] of [[390,844],[320,568],[844,390],[1024,768],[1800,360]]) {
+    const camera=cameraForViewport(width,height);
+    for(const corner of [{x:0,y:0},{x:900,y:0},{x:0,y:680},{x:900,y:680}]) {
+      const p=worldToScreen(corner,camera);
+      assert.ok(p.x>=0 && p.x<=width && p.y>=0 && p.y<=height, `${width}×${height} keeps the whole course`);
+    }
+    const origin=worldToScreen({x:450,y:340},camera);
+    const horizontal=worldToScreen({x:550,y:340},camera);
+    const vertical=worldToScreen({x:450,y:440},camera);
+    assert.ok(Math.abs(Math.hypot(horizontal.x-origin.x,horizontal.y-origin.y)-Math.hypot(vertical.x-origin.x,vertical.y-origin.y))<1e-8,'circles and distances retain their proportions');
+    for(let i=0;i<6;i++)for(const point of [createCourse(i).start,...createCourse(i).flags]) {
+      const screen=worldToScreen(point,camera), restored=screenToWorld(screen,camera);
+      assert.ok(Math.abs(restored.x-point.x)<1e-8 && Math.abs(restored.y-point.y)<1e-8, 'touch lands at the rendered lie');
+    }
+    assert.ok(ballTouchRadius(camera)*camera.scale*2 >= 44, 'ball touch target is at least 44 CSS pixels');
+  }
+});
+
+test('orientation changes preserve the saved lie and dragging beyond the screen', () => {
+  const round=makeRound(2,3), before=JSON.stringify(round);
+  const camera=cameraForViewport(390,844), rotated=cameraForViewport(844,390);
+  const lie=round.ball, p=worldToScreen(lie,camera), p2=worldToScreen(lie,rotated);
+  assert.notEqual(p.x,p2.x);
+  const capture={x:-80,y:880}, world=screenToWorld(capture,camera), screen=worldToScreen(world,camera);
+  assert.ok(Math.abs(screen.x-capture.x)<1e-8 && Math.abs(screen.y-capture.y)<1e-8,'captured drags stay accurate outside the canvas');
+  assert.equal(JSON.stringify(round),before,'turning the phone cannot change physics or saved position');
 });

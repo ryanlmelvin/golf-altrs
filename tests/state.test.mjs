@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { newGame, unlockedLocations, nextOuting, availableOuting, roundContext, roundOuting, roundFind, startRound, clearRound, collect, respond, solve, finishRound, chooseEnding, validateSave, parseBackup, storageKey, travel } from '../docs/state.js';
+import { newGame, unlockedLocations, nextOuting, availableOuting, roundContext, roundOuting, roundFind, startRound, prepareRound, clearRound, collect, respond, solve, finishRound, chooseEnding, validateSave, parseBackup, storageKey, travel } from '../docs/state.js';
 import { OUTINGS, JOURNEY_EVIDENCE as EVIDENCE, JOURNEY_DEDUCTIONS as DEDUCTIONS } from '../docs/journey.js';
 import { makeRound, createCourse, launchShot, stepRound } from '../docs/golf.js';
 
@@ -145,4 +145,67 @@ test('an uncollected final-course souvenir does not restart the resolved case', 
   s.evidence=EVIDENCE.map(e=>e.id).filter(id=>id!=='architecture');
   s.finalWin=true;
   assert.equal(nextOuting(s),null);
+});
+
+test('a new round can be prepared for immediate play without advancing the holiday', () => {
+  const s=newGame();
+  const meta=prepareRound(s);
+  assert.equal(s.started,true);
+  assert.equal(meta.outingId,'arrival');
+  assert.equal(s.totalRounds,0);
+  assert.deepEqual(s.completed,[]);
+  assert.equal(s.rounds[0],undefined,'the renderer supplies the initial snapshot');
+  s.rounds[0]=makeRound(0,meta.variant);
+  const before=JSON.stringify(s);
+  prepareRound(s);
+  assert.equal(JSON.stringify(s),before,'returning to the same untouched round is idempotent');
+});
+
+test('an untouched early visit picks up a newly available outing without moving the ball', () => {
+  const s=newGame();
+  begin(s,0);finish(s,0);
+  travel(s,1);prepareRound(s);
+  s.rounds[1]=makeRound(1,roundContext(s).variant);
+  s.rounds[1].angle=.37;s.rounds[1].power=42;
+  assert.equal(roundOuting(s),null);
+  const snapshot=JSON.stringify(s.rounds[1]);
+  travel(s,0);
+  for(let i=0;i<2;i++){clearRound(s);prepareRound(s);finish(s,0);}
+  travel(s,1);
+  assert.equal(availableOuting(s).id,'lakeside-morning');
+  prepareRound(s);
+  assert.equal(roundOuting(s).id,'lakeside-morning');
+  assert.equal(JSON.stringify(s.rounds[1]),snapshot);
+  assert.equal(s.totalRounds,3);
+});
+
+test('preparing an active or completed round preserves the exact imported state', () => {
+  const s=newGame();prepareRound(s);
+  s.rounds[0]=makeRound(0,0);
+  launchShot(s.rounds[0],-.8,50);
+  stepRound(s.rounds[0],createCourse(0));
+  const resumed=validateSave(JSON.parse(JSON.stringify(s)));
+  const movingBefore=JSON.stringify(resumed);
+  prepareRound(resumed);
+  assert.equal(JSON.stringify(resumed),movingBefore);
+  const done=newGame();prepareRound(done);finish(done,0);
+  const restored=validateSave(JSON.parse(JSON.stringify(done)));
+  const finishedBefore=JSON.stringify(restored);
+  prepareRound(restored);
+  assert.equal(JSON.stringify(restored),finishedBefore);
+  assert.equal(restored.roundMeta[0].settled,true);
+  assert.equal(restored.totalRounds,1);
+});
+
+test('an untouched recovered clue updates its encounter after the paper is collected', () => {
+  const firstFind=OUTINGS.find(o=>o.find),s=beforeOuting(firstFind.id);
+  begin(s,firstFind.location);finish(s,firstFind.location);
+  clearRound(s);prepareRound(s);s.rounds[s.current]=makeRound(s.current,roundContext(s).variant);
+  assert.equal(roundFind(s).afterFlags,0);
+  collect(s,firstFind.find.clue);
+  const snapshot=JSON.stringify(s.rounds[s.current]);
+  prepareRound(s);
+  assert.equal(roundContext(s).findId,null);
+  assert.equal(roundOuting(s).id,'back-porch');
+  assert.equal(JSON.stringify(s.rounds[s.current]),snapshot);
 });

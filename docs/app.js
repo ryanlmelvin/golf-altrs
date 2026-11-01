@@ -2,7 +2,7 @@ import { ENDINGS, SOURCES, PROTESTS } from './story.js';
 import { OUTINGS, JOURNEY_EVIDENCE as EVIDENCE, JOURNEY_DEDUCTIONS as DEDUCTIONS } from './journey.js';
 import { DESTINATIONS } from './alabama.js';
 import { GolfGame } from './golf.js';
-import { newGame, unlockedLocations, collect, respond, solve, finishRound, chooseEnding, validateSave, parseBackup, storageKey, travel, roundContext, roundOuting, roundFind, startRound, clearRound, nextOuting } from './state.js';
+import { newGame, unlockedLocations, collect, respond, solve, finishRound, chooseEnding, validateSave, parseBackup, storageKey, travel, roundContext, roundOuting, roundFind, prepareRound, clearRound, nextOuting } from './state.js';
 const $=(q,root=document)=>root.querySelector(q);
 const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const app=$('#app'),dialog=$('#dialog'),KEY=storageKey(location.pathname);
@@ -14,13 +14,47 @@ function toast(t){clearTimeout(toastTimer);$('#toast').textContent=t;$('#toast')
 function showDialog(title,body,kicker='The Pension Plan'){if(!dialog.open)lastFocus=document.activeElement;dialog.innerHTML=`<div class="dialog-head"><span class="eyebrow">${esc(kicker)}</span><button class="icon-button" data-action="close" aria-label="Close">${icons.close}</button></div><div class="dialog-content"><h2 id="dialog-title">${esc(title)}</h2>${body}</div>`;if(!dialog.open)dialog.showModal();dialog.scrollTop=0;}
 function closeDialog(){dialog.close();if(lastFocus?.isConnected)lastFocus.focus();}
 dialog.addEventListener('click',e=>{if(e.target===dialog){const b=dialog.getBoundingClientRect();if(e.clientX<b.left||e.clientX>b.right||e.clientY<b.top||e.clientY>b.bottom)closeDialog();}});
-dialog.addEventListener('close',()=>{const h=$('.app-header');if(h)h.outerHTML=header();});
-function header(){return `<header class="app-header"><button class="brand" data-action="view" data-view="course" aria-label="The Pension Plan, current course">${icons.mark}<span class="brand-name">The Pension Plan<small>A GOLF HOLIDAY</small></span></button><nav class="nav" aria-label="Main"><button class="${view==='course'?'active':''}" data-action="view" data-view="course">Golf</button><button class="${view==='trail'?'active':''}" data-action="view" data-view="trail">Alabama</button>${state.evidence.length||state.loreSeen.length?`<button class="${view==='casebook'?'active':''}" data-action="view" data-view="casebook">Notebook</button>`:''}</nav><button class="icon-button header-menu" data-action="menu" aria-label="Menu">${icons.more}</button></header>`;}
-function footer(){return `<footer class="app-footer quiet-footer"><span class="footer-left"><i class="save-dot"></i>${saveAvailable?'Saved here.':'Save a backup.'}${navigator.onLine?'':' · Offline'}</span><button class="text-button" data-action="install">Take it with you ↗</button></footer>`;}
-function render(){if(golf){golf.destroy();golf=null;}app.innerHTML=header()+`<main class="main ${view==='course'?'quiet-main':''}">${view==='trail'?trailView():view==='casebook'?casebookView():view==='ending'?endingView():courseView()}</main>`+footer();if(view==='course')mountGolf();}
-function courseView(){const l=DESTINATIONS[state.current],o=roundOuting(state),round=state.rounds[state.current],meta=roundContext(state);return `<div class="quiet-course"><div class="quiet-heading"><div><div class="eyebrow">${esc(l.region)}</div><h1>${esc(l.title)}<span style="color:var(--gold)">.</span></h1></div><button class="weather-button" data-action="clubhouse" aria-label="Visit the clubhouse">☀ <span>74°</span></button></div><section class="course-frame" aria-label="Golf course"><div class="course-topbar"><span>${esc(o?.title||`Round ${(state.counts[state.current]||0)+1}`)}</span><span>${o?.target?`BEAT ${o.target}`:'FIVE FLAGS · YOUR ORDER'}</span></div><div class="course-body"><div id="golf-host" class="golf-host"></div>${!round?`<div class="course-start quiet-start"><button class="btn" data-action="tee">Tee off ↗</button></div>`:round.finished?resultView():''}</div></section><div class="quiet-course-foot"><button class="text-button" data-action="clubhouse">19th hole ↗</button><div><button class="icon-button" data-action="help" aria-label="Golf controls">?</button>${round?.finished?'<button class="icon-button" data-action="scorecard" aria-label="Open your scorecard">▤</button>':round?'<button class="icon-button" data-action="restart-round" aria-label="Start a fresh round">↺</button>':''}</div></div></div>`;}
-function syncRoundControls(){const box=$('.quiet-course-foot>div');if(box)box.innerHTML='<button class="icon-button" data-action="help" aria-label="Golf controls">?</button>'+(state.rounds[state.current]?.finished?'<button class="icon-button" data-action="scorecard" aria-label="Open your scorecard">▤</button>':'<button class="icon-button" data-action="restart-round" aria-label="Start a fresh round">↺</button>');}
-function mountGolf(){const i=state.current,l=DESTINATIONS[i],meta=roundContext(state),o=roundOuting(state),f=roundFind(state);armed=!!state.rounds[i];golf=new GolfGame($('#golf-host'),{courseIndex:l.baseCourse,variant:meta.variant,saved:state.rounds[i],sound:state.settings.sound,assisted:state.settings.assisted,protestLevel:state.ending==='seal'||state.ending==='expose'?0:state.chorus,finale:o?.kind==='finale',findable:f?{id:f.clue,afterFlags:f.afterFlags,found:state.evidence.includes(f.clue)}:undefined,onFind:id=>{collect(state,id);save();foundDialog(id,f);},onChange:snapshot=>{if(armed){state.rounds[i]=snapshot;save();}},onComplete:result=>{state.rounds[i]=golf.getSnapshot();finishRound(state,i,result);save();syncRoundControls();$('.result-card')?.remove();$('.course-body').insertAdjacentHTML('beforeend',resultView());}});if(!armed)$('#golf-host').inert=true;}
+function utilityHeader() {
+  return `<header class="utility-header"><button class="text-button" data-action="view" data-view="course">← Golf</button><button class="icon-button" data-action="menu" aria-label="Menu">${icons.more}</button></header>`;
+}
+function render() {
+  if (golf) { golf.destroy(); golf = null; }
+  const playing = view === 'course';
+  document.body.classList.toggle('playing', playing);
+  if (playing) {
+    prepareRound(state);
+    app.innerHTML = courseView();
+    mountGolf();
+  } else {
+    app.innerHTML = utilityHeader() + `<main class="main">${view === 'trail' ? trailView() : view === 'casebook' ? casebookView() : endingView()}</main>`;
+  }
+}
+function courseView() {
+  const location = DESTINATIONS[state.current];
+  return `<main class="play-screen" aria-label="${esc(location.title)}"><section class="play-stage" aria-label="Golf course"><div class="course-body"><div id="golf-host" class="golf-host"></div>${state.rounds[state.current]?.finished ? resultView() : ''}</div></section><button class="game-menu" data-action="menu" aria-label="Menu">${icons.more}</button></main>`;
+}
+function mountGolf() {
+  const i = state.current, location = DESTINATIONS[i], meta = roundContext(state), outing = roundOuting(state), find = roundFind(state);
+  armed = true;
+  golf = new GolfGame($('#golf-host'), {
+    courseIndex: location.baseCourse, variant: meta.variant, saved: state.rounds[i],
+    sound: state.settings.sound, assisted: state.settings.assisted, target: outing?.target,
+    protestLevel: state.ending === 'seal' || state.ending === 'expose' ? 0 : state.chorus,
+    finale: outing?.kind === 'finale',
+    findable: find ? { id: find.clue, afterFlags: find.afterFlags, found: state.evidence.includes(find.clue) } : undefined,
+    onFind: id => { collect(state, id); save(); foundDialog(id, find); },
+    onChange: snapshot => { state.rounds[i] = snapshot; save(); },
+    onComplete: result => {
+      state.rounds[i] = golf.getSnapshot();
+      finishRound(state, i, result);
+      save();
+      $('.result-card')?.remove();
+      $('.course-body').insertAdjacentHTML('beforeend', resultView());
+    }
+  });
+  state.rounds[i] = golf.getSnapshot();
+  save();
+}
 function resultView(){const round=state.rounds[state.current],meta=roundContext(state),o=roundOuting(state);if(!round?.finished)return '';const find=roundFind(state);return `<div class="result-card"><div class="result-paper quiet-result"><div class="eyebrow">${esc(DESTINATIONS[state.current].title)}</div><strong class="round-total">${round.strokes}</strong><div class="eyebrow muted">Strokes</div><p>${esc(o?.target?(meta.won?'A debt is a debt.':'Another round, another chance.'):o?.after||'No hurry to be anywhere else.')}</p>${o?.kind==='finale'&&meta.won?'<button class="btn" data-action="ending-choice">Your signature ↗</button>':o?.reward&&meta.won?'<button class="btn" data-action="claim">Stay for a minute ↗</button>':'<button class="btn" data-action="clubhouse">Something cold? ↗</button>'}${find?'<button class="text-button" data-action="walk-green">Walk the green ↗</button>':''}<div class="result-small-actions"><button class="text-button" data-action="retry">Another five ↺</button><button class="text-button" data-action="open-trail">A change of scenery ↗</button></div></div></div>`;}
 function foundDialog(id,f){const e=EVIDENCE.find(e=>e.id===id);if(!e)return;const paper=id==='brass-sign'?'<div class="invoice-paper"><div class="eyebrow">Field & Green Supply Co.</div><div class="invoice-type">DELIVERY COPY</div><div class="invoice-row"><span>Artificial turf</span><span class="circled">5 strips</span></div><div class="invoice-line"></div><div class="invoice-line short"></div><div class="handwritten">Why so much? — I.</div></div>':`<div class="found-note">${esc(f?.text||e.body)}</div>`;showDialog(e.title,`${paper}<button class="btn light" data-action="file-note">Keep it</button>`,'By the green');}
 function clueLabel(id){return EVIDENCE.find(e=>e.id===id)?.title||'A scrap of paper';}
@@ -36,24 +70,30 @@ function evidenceDialog(id,detail=false){const e=EVIDENCE.find(e=>e.id===id);if(
 function deductionDialog(id,wrong=false){const d=DEDUCTIONS.find(d=>d.id===id);if(!d||!d.required.every(id=>state.evidence.includes(id)))return;const done=state.solved.includes(id);showDialog(d.title,`<p>${esc(done?d.explanation:d.prompt)}</p>${wrong?'<p class="small">That doesn’t quite fit.</p>':''}${done?'<button class="btn" data-action="close">Filed</button>':`<div class="deduction-evidence">${d.required.map(id=>`<span>${esc(clueLabel(id))}</span>`).join('')}</div><div class="choices">${d.options.map(o=>`<button class="choice" data-action="solve" data-id="${id}" data-answer="${o.id}">${esc(o.label)}</button>`).join('')}</div>`}`,'A quiet thought');}
 function endingChoice(){if(!state.finalWin)return;showDialog('Your instructions.','<p>The Architect lays down his pen.</p><button class="ending-choice" data-action="choose-ending" data-ending="seal">Close the account.<span>↗</span></button>'+`<button class="ending-choice" data-action="choose-ending" data-ending="expose" ${state.trust>=2?'':'disabled'}>Make it public.<span>↗</span>${state.trust<2?'<small>You’ll need someone willing to stand beside you.</small>':''}</button>`+'<button class="ending-choice" data-action="choose-ending" data-ending="accept">Ask about the benefits.<span>↗</span></button>','One final signature');}
 function endingView(){const e=ENDINGS[state.ending];return e?`<div class="ending-wrap"><div class="eyebrow">${esc(e.kicker)}</div><h1>${esc(e.title)}.</h1><div class="ending-copy">${esc(e.body)}</div><button class="btn" data-action="open-trail">Stay another day ↗</button></div>`:'';}
-function menu(){showDialog('A few arrangements.',`<div class="setting"><span>Sound</span><button class="toggle ${state.settings.sound?'on':''}" data-action="toggle-sound" role="switch" aria-checked="${state.settings.sound}" aria-label="Sound"></button></div><div class="setting"><span>A little golf assistance</span><button class="toggle ${state.settings.assisted?'on':''}" data-action="toggle-assist" role="switch" aria-checked="${state.settings.assisted}" aria-label="Golf assistance"></button></div><div class="settings-buttons"><button class="btn light" data-action="backup">Save backup ↓</button><button class="btn light" data-action="restore">Open backup ↑</button><button class="btn light" data-action="help">Golf controls</button><button class="btn light" data-action="about">About this holiday</button></div><button class="text-button" data-action="new-game">Begin another holiday ↺</button>`);}
-function help(){showDialog('Pull back. Let go.','<p>Five flags. Any order.</p><p class="small">Drag back from the ball and release. Or tap a direction, set the power, and swing. Chip carries. Roll stays low.</p><div class="help-keys"><span>Aim / power</span><span><kbd>← →</kbd> <kbd>↑ ↓</kbd></span><span>Swing / club</span><span><kbd>Space</kbd> <kbd>C</kbd></span></div><p class="footnote">Keyboard controls work while the course has focus. Assistance is available in the menu.</p><button class="btn" data-action="close">Let’s try.</button>','Golf controls');}
+function menu() {
+  const location = DESTINATIONS[state.current], finished = state.rounds[state.current]?.finished;
+  showDialog(location.title, `<div class="pause-actions"><button class="btn" data-action="resume">Back to golf</button>${finished ? '<button class="choice" data-action="scorecard">Scorecard</button>' : ''}<button class="choice" data-action="clubhouse">Clubhouse</button><button class="choice" data-action="open-trail">Explore Alabama</button>${state.evidence.length || state.loreSeen.length ? '<button class="choice" data-action="view" data-view="casebook">Notebook</button>' : ''}<button class="choice" data-action="settings">Settings</button></div>`, location.region);
+}
+function settings() {
+  showDialog('Settings', `<div class="setting"><span>Sound</span><button class="toggle ${state.settings.sound ? 'on' : ''}" data-action="toggle-sound" role="switch" aria-checked="${state.settings.sound}" aria-label="Sound"></button></div><div class="setting"><span>Golf assistance</span><button class="toggle ${state.settings.assisted ? 'on' : ''}" data-action="toggle-assist" role="switch" aria-checked="${state.settings.assisted}" aria-label="Golf assistance"></button></div><div class="settings-buttons"><button class="btn light" data-action="backup">Save backup ↓</button><button class="btn light" data-action="restore">Open backup ↑</button><button class="btn light" data-action="help">Controls</button><button class="btn light" data-action="install">Install</button></div><div class="settings-links">${state.rounds[state.current] && !state.rounds[state.current].finished ? '<button class="text-button" data-action="restart-round">Restart round</button>' : ''}<button class="text-button" data-action="about">About</button><button class="text-button" data-action="new-game">New holiday</button></div>`, 'The Pension Plan');
+}
+function help(){showDialog('Pull back. Let go.','<p>Five flags. Any order.</p><p class="small">Drag back from the ball and release. Or tap a direction and open Shot controls to set power and swing. Chip carries. Roll stays low.</p><div class="help-keys"><span>Aim / power</span><span><kbd>← →</kbd> <kbd>↑ ↓</kbd></span><span>Swing / club</span><span><kbd>Space</kbd> <kbd>C</kbd></span></div><p class="footnote">Keyboard controls work while the course has focus. Assistance is available in the menu.</p><button class="btn" data-action="close">Let’s try.</button>','Golf controls');}
 function about(){showDialog('A golf holiday.',`<p class="small">An open-ended Alabama trip by Ryan L. Melvin. Original compact courses, local stories, and something to notice if you stay long enough.</p><p class="small">Fictional characters and events in real Alabama places. Unaffiliated with RSA or the Robert Trent Jones Golf Trail.</p><details><summary style="font-size:12px;cursor:pointer;margin:18px 0">Real places & reading ↗</summary><ul class="source-list">${SOURCES.map(s=>`<li><a href="${esc(s.url)}" target="_blank" rel="noopener noreferrer">${esc(s.title)} ↗</a></li>`).join('')}</ul></details><p class="footnote">This first edition has 11 destinations, 33 local stories, and a long mystery arc. Golf and travel continue after its resolution.</p>`,'The Pension Plan');}
 async function install(){if(installPrompt){await installPrompt.prompt();await installPrompt.userChoice;installPrompt=null;return;}showDialog('Take it with you.','<p class="small">Use Install app or Add to Home Screen in your browser. Safari: Share → Add to Home Screen, or File → Add to Dock on Mac.</p><p class="small">Open online once for offline play. Saves stay in this browser; use a backup to move between devices or installations.</p><div class="dialog-actions"><button class="btn light" data-action="backup">Save backup ↓</button><button class="btn" data-action="persist">Keep my save</button></div>','Install & offline');}
 function backup(){if(golf&&armed)state.rounds[state.current]=golf.getSnapshot();save();const url=URL.createObjectURL(new Blob([JSON.stringify(state,null,2)],{type:'application/json'}));const a=document.createElement('a');a.href=url;a.download='the-pension-plan-save.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);toast('Packed.');}
 function restartRound(){if(golf){golf.destroy();golf=null;}clearRound(state);save();render();}
 document.addEventListener('click',async e=>{const el=e.target.closest('[data-action]');if(!el||el.disabled)return;switch(el.dataset.action){
-case 'view':view=el.dataset.view;render();break;
+case 'view':if(dialog.open)closeDialog();view=el.dataset.view;render();window.scrollTo(0,0);break;
+case 'resume':if(dialog.open)closeDialog();if(view!=='course'){view='course';render();}break;
 case 'close':closeDialog();break;
-case 'tee':startRound(state);armed=true;state.rounds[state.current]=golf.getSnapshot();save();$('.course-start')?.remove();$('#golf-host').inert=false;$('.golf-canvas').focus({preventScroll:true});syncRoundControls();break;
 case 'clubhouse':clubhouse();break;
 case 'local-story':localStory();break;
 case 'response':response(el.dataset.id);break;
 case 'claim':claim();break;
 case 'file-note':closeDialog();render();break;
 case 'walk-green':$('.result-card')?.remove();break;
-case 'scorecard':if(!$('.result-card'))$('.course-body').insertAdjacentHTML('beforeend',resultView());break;
-case 'retry':restartRound();break;
+case 'scorecard':if(dialog.open)closeDialog();view='course';render();break;
+case 'retry':if(dialog.open)closeDialog();restartRound();break;
 case 'restart-round':showDialog('A fresh card?','<p>This round will be set aside.</p><div class="dialog-actions"><button class="btn light" data-action="close">Keep playing</button><button class="btn" data-action="confirm-round">Start fresh ↺</button></div>');break;
 case 'confirm-round':closeDialog();restartRound();break;
 case 'travel':{const i=Number(el.dataset.index);if(golf){golf.destroy();golf=null;}if(travel(state,i)){save();view='course';render();window.scrollTo(0,0);}break;}
@@ -69,10 +109,11 @@ case 'solve':if(solve(state,el.dataset.id,el.dataset.answer)){save();render();sh
 case 'ending-choice':endingChoice();break;
 case 'choose-ending':if(chooseEnding(state,el.dataset.ending)){save();closeDialog();view='ending';render();}break;
 case 'menu':menu();break;
+case 'settings':settings();break;
 case 'help':help();break;
 case 'about':about();break;
-case 'toggle-sound':state.settings.sound=!state.settings.sound;save();golf?.setSound(state.settings.sound);menu();break;
-case 'toggle-assist':state.settings.assisted=!state.settings.assisted;save();render();menu();break;
+case 'toggle-sound':state.settings.sound=!state.settings.sound;save();golf?.setSound(state.settings.sound);settings();break;
+case 'toggle-assist':state.settings.assisted=!state.settings.assisted;save();render();settings();break;
 case 'install':await install();break;
 case 'persist':{const kept=await navigator.storage?.persist?.().catch(()=>false);toast(kept?'Your browser will protect this save.':'A backup is your safest bet.');break;}
 case 'backup':backup();break;

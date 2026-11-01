@@ -6,6 +6,28 @@ const ellipseContains = (p, e, padding = 0) => ((p.x - e.x) / (e.rx + padding)) 
 const finite = (v, fallback) => Number.isFinite(v) ? v : fallback;
 const variantNumber = v => Number.isSafeInteger(v) && v >= 0 ? v : 0;
 
+// The simulation stays in one coordinate system while the viewport can turn.
+// A uniform transform preserves circles, distances, and touch accuracy.
+export function cameraForViewport(width, height) {
+  const w = Math.max(1, finite(width, WORLD.width));
+  const h = Math.max(1, finite(height, WORLD.height));
+  const rotation = h > w * 1.1 ? Math.PI / 2 : 0;
+  const rotated = rotation !== 0;
+  const boardWidth = rotated ? WORLD.height : WORLD.width;
+  const boardHeight = rotated ? WORLD.width : WORLD.height;
+  const top = h < 440 ? 16 : 40, bottom = h < 440 ? 52 : 64;
+  const scale = Math.max(.01, Math.min(Math.max(1, w - 16) / boardWidth, Math.max(1, h - top - bottom) / boardHeight));
+  return { width: w, height: h, rotation, scale, x: (w - boardWidth * scale) / 2, y: top + (Math.max(1, h - top - bottom) - boardHeight * scale) / 2 };
+}
+export function worldToScreen(point, camera) {
+  return camera.rotation ? { x: camera.x + (WORLD.height - point.y) * camera.scale, y: camera.y + point.x * camera.scale } : { x: camera.x + point.x * camera.scale, y: camera.y + point.y * camera.scale };
+}
+export function screenToWorld(point, camera) {
+  return camera.rotation ? { x: (point.y - camera.y) / camera.scale, y: WORLD.height - (point.x - camera.x) / camera.scale } : { x: (point.x - camera.x) / camera.scale, y: (point.y - camera.y) / camera.scale };
+}
+export function ballTouchRadius(camera) { return Math.max(20, 22 / camera.scale); }
+
+
 const layouts = [
   { start: [138, 554], flags: [[236, 429], [467, 549], [716, 434], [663, 173], [296, 161]], water: [[473, 329, 103, 75]], sand: [[321, 395, 42, 25], [742, 248, 38, 29], [425, 157, 35, 23]] },
   { start: [130, 553], flags: [[259, 444], [540, 550], [748, 354], [558, 152], [236, 178]], water: [[445, 350, 86, 114], [691, 93, 66, 44]], sand: [[229, 351, 33, 26], [686, 470, 42, 25], [398, 165, 46, 24]] },
@@ -143,9 +165,7 @@ function seeded(seed) { let n = seed >>> 0; return () => { n = (1664525 * n + 10
 function oval(ctx, x, y, rx, ry, color, rotation = 0) { ctx.beginPath(); ctx.ellipse(x, y, rx, ry, rotation, 0, Math.PI * 2); ctx.fillStyle = color; ctx.fill(); }
 
 const STYLE = `
-.golf-view{position:relative;isolation:isolate;color:#173e33;font:12px/1.4 system-ui,sans-serif}.golf-canvas{display:block;width:100%;height:auto;aspect-ratio:900/680;touch-action:none;cursor:crosshair;outline-offset:-4px;border-radius:3px}.golf-canvas:focus-visible{outline:2px solid #f1c264}.golf-bar{display:flex;align-items:center;gap:12px;padding:14px 2px 6px;flex-wrap:wrap}.golf-clubs{display:flex;padding:3px;background:#e7e9dc;border-radius:6px;gap:2px}.golf-view button{font:inherit;cursor:pointer;border:0;border-radius:4px;transition:background .15s}.golf-clubs button{padding:8px 13px;color:#4a6457;background:transparent}.golf-clubs button[aria-pressed=true]{color:#173e33;background:#fcfbf4;box-shadow:0 1px 4px #173e3315}.golf-view button:focus-visible,.golf-view input:focus-visible{outline:2px solid #ba893c;outline-offset:3px}.golf-power{display:flex;align-items:center;gap:8px;flex:1;min-width:90px}.golf-power input{accent-color:#345d45;width:100%;min-width:55px;height:18px;cursor:pointer}.golf-power span{font:10px/1.2 system-ui,sans-serif;letter-spacing:1px;color:#718172}.golf-swing{background:#234b39;color:#fffdf4;padding:11px 21px;min-width:81px}.golf-swing:hover{background:#345f45}.golf-swing:disabled{opacity:.45;cursor:default}.golf-stats{position:absolute;top:18px;left:18px;display:flex;gap:7px;pointer-events:none}.golf-stat{background:#f9f7e9e8;border:1px solid #fff9;backdrop-filter:blur(5px);border-radius:5px;padding:6px 10px;box-shadow:0 2px 8px #183b2610;letter-spacing:.3px}.golf-stat strong{font-size:16px;margin-right:4px;font-weight:500}.golf-flags{position:absolute;top:20px;right:18px;display:flex;gap:5px;pointer-events:none}.golf-flags span{width:25px;height:25px;display:grid;place-items:center;border-radius:50%;background:#f9f7e9d9;color:#536e52;border:1px solid #ffffff60;font-size:11px}.golf-flags span.done{background:#264c3c;color:#f7f0dc}.golf-note{pointer-events:none;position:absolute;left:50%;bottom:80px;transform:translateX(-50%);white-space:nowrap;background:#fffdf0e8;box-shadow:0 3px 14px #173e3312;border:1px solid #fff9;color:#375541;padding:8px 14px;border-radius:4px;opacity:1;transition:opacity .6s}.golf-note:empty{opacity:0}.golf-a11y{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)}.golf-progress{height:2px;position:absolute;top:0;left:0;background:#f4d393;transition:width .3s}.golf-view[data-finale=true] .golf-stat{background:#f5eddbed}.golf-view[data-finale=true] .golf-flags span.done{background:#623d42}.golf-view button:disabled{cursor:default}@media(max-width:540px){.golf-stats{top:12px;left:10px}.golf-stat{padding:5px 8px;font-size:10px}.golf-stat strong{font-size:14px}.golf-flags{top:13px;right:10px;gap:3px}.golf-flags span{width:21px;height:21px;font-size:10px}.golf-bar{gap:8px;padding-top:11px}.golf-clubs button{padding:8px 10px}.golf-swing{padding:10px 15px;min-width:65px}.golf-note{bottom:70px;font-size:11px}}@media(prefers-reduced-motion:reduce){.golf-view *{transition:none!important}}`;
-
-const FINDABLE_STYLE = `.golf-surface{position:relative}.golf-view .golf-findable{position:absolute;transform:translate(-50%,-50%);width:44px;height:44px;background:transparent;padding:0;display:grid;place-items:center;z-index:1}.golf-view .golf-findable[hidden]{display:none}.golf-findable>span{display:block;width:14px;height:19px;background:#fffbed;box-shadow:2px 3px 2px #263d312a;transform:rotate(-17deg);position:relative}.golf-findable>span:before{content:'';position:absolute;right:0;top:0;border-top:5px solid #d1d5b8;border-left:5px solid transparent}.golf-findable>span:after{content:'';position:absolute;left:3px;top:8px;width:7px;height:1px;background:#8d90704d;box-shadow:0 3px 0 #8d90704d,0 6px 0 #8d90704d}.golf-findable:is(:hover,:focus-visible):after{content:attr(aria-label);position:absolute;bottom:42px;left:50%;transform:translateX(-50%);white-space:nowrap;font:10px/1.4 system-ui,sans-serif;color:#294734;background:#fffbee;padding:5px 8px;border:1px solid #e5e6d1;box-shadow:0 2px 5px #29473418;pointer-events:none}`;
+.golf-view{position:relative;width:100%;height:100%;overflow:hidden;isolation:isolate;color:#173e33;font:12px/1.4 system-ui,sans-serif;background:#95ab79}.golf-surface{position:absolute;inset:0}.golf-canvas{display:block;width:100%;height:100%;touch-action:none;cursor:crosshair;outline-offset:-4px}.golf-canvas:focus-visible{outline:2px solid #f1c264}.golf-view button{font:inherit;cursor:pointer;border:0;transition:background .15s}.golf-view button:focus-visible,.golf-view input:focus-visible{outline:2px solid #ba893c;outline-offset:3px}.golf-view button:disabled{opacity:.45;cursor:default}.golf-hud{position:absolute;top:max(12px,env(safe-area-inset-top));left:max(12px,env(safe-area-inset-left));display:flex;align-items:center;gap:12px;height:44px;padding:0 14px;background:#f8f5e7e0;border:1px solid #fff8;border-radius:24px;box-shadow:0 2px 10px #24422b0d;pointer-events:none}.golf-stat{font-variant-numeric:tabular-nums;line-height:1}.golf-target{font:10px/1.2 system-ui,sans-serif;color:#61755c;margin-left:5px}.golf-stat strong{font:24px/1 Georgia,serif;font-weight:400}.golf-flags{display:flex;gap:6px}.golf-flags span{width:7px;height:7px;border:1px solid #6a7f5f;border-radius:50%;background:transparent}.golf-flags span.done{background:#345c42;border-color:#345c42}.golf-note{pointer-events:none;position:absolute;bottom:max(76px,calc(env(safe-area-inset-bottom) + 76px));left:50%;transform:translateX(-50%);white-space:nowrap;font-size:11px;background:#fffdf0e8;border:1px solid #fff9;color:#375541;padding:8px 14px;border-radius:20px;opacity:1;transition:opacity .4s}.golf-note:empty{opacity:0}.golf-dock{position:absolute;bottom:max(12px,env(safe-area-inset-bottom));left:50%;transform:translateX(-50%);display:flex;gap:7px;align-items:center}.golf-view .golf-club-toggle,.golf-view .golf-shot-toggle{height:44px;background:#f8f5e7e8;color:#214432;border:1px solid #fff8;box-shadow:0 2px 10px #24422b18;border-radius:24px}.golf-view .golf-club-toggle{min-width:78px;padding:0 17px}.golf-view .golf-shot-toggle{width:44px;padding:0;display:grid;place-items:center}.golf-shot-toggle svg{width:18px;height:18px}.golf-shot-toggle[aria-expanded=true]{background:#244a38;color:#fff9e9}.golf-shot-panel{position:absolute;bottom:max(66px,calc(env(safe-area-inset-bottom) + 66px));left:50%;transform:translateX(-50%);display:flex;align-items:center;gap:12px;width:min(330px,calc(100% - 32px));padding:13px 14px;background:#f8f5e7f5;border:1px solid #fff9;border-radius:18px;box-shadow:0 5px 24px #1c412426}.golf-shot-panel[hidden]{display:none}.golf-power{display:flex;align-items:center;gap:8px;flex:1;min-width:0}.golf-power input{accent-color:#345d45;width:100%;min-width:55px;height:30px;cursor:pointer}.golf-power span{font:10px/1.2 system-ui,sans-serif;min-width:30px;text-align:right;color:#62745e}.golf-view .golf-swing{height:44px;background:#234b39;color:#fffdf4;padding:0 17px;border-radius:24px}.golf-swing:hover{background:#345f45}.golf-a11y{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)}.golf-view[data-finale=true] .golf-flags span.done{background:#623d42;border-color:#623d42}.golf-view .golf-findable{position:absolute;transform:translate(-50%,-50%);width:44px;height:44px;background:transparent;padding:0;display:grid;place-items:center;z-index:1}.golf-view .golf-findable[hidden]{display:none}.golf-findable>span{display:block;width:14px;height:19px;background:#fffbed;box-shadow:2px 3px 2px #263d312a;transform:rotate(-17deg);position:relative}.golf-findable>span:before{content:'';position:absolute;right:0;top:0;border-top:5px solid #d1d5b8;border-left:5px solid transparent}.golf-findable>span:after{content:'';position:absolute;left:3px;top:8px;width:7px;height:1px;background:#8d90704d;box-shadow:0 3px 0 #8d90704d,0 6px 0 #8d90704d}.golf-findable:is(:hover,:focus-visible):after{content:attr(aria-label);position:absolute;bottom:42px;left:50%;transform:translateX(-50%);white-space:nowrap;font:10px/1.4 system-ui,sans-serif;color:#294734;background:#fffbee;padding:5px 8px;border:1px solid #e5e6d1;box-shadow:0 2px 5px #29473418;pointer-events:none}@media(max-height:440px){.golf-hud{top:max(8px,env(safe-area-inset-top));height:40px}.golf-dock{bottom:max(8px,env(safe-area-inset-bottom))}}@media(prefers-reduced-motion:reduce){.golf-view *{transition:none!important}}`;
 
 export class GolfGame {
   constructor(container, options = {}) {
@@ -157,6 +177,7 @@ export class GolfGame {
     this.protestLevel = clamp(Math.trunc(finite(options.protestLevel, 0)), 0, 3);
     this.round = restoreRound(options.saved, this.course.index, this.course.variant);
     this.sound = Boolean(options.sound);
+    this.target = Number.isFinite(options.target) && options.target > 0 ? Math.round(options.target) : null;
     this.destroyed = false;
     this.drag = null;
     this.hover = false;
@@ -164,18 +185,20 @@ export class GolfGame {
     this.tick = 0;
     this.lastTime = 0;
     this.accumulator = 0;
-    this.noteUntil = this.round.strokes ? 0 : Infinity;
-    this.noteText = this.round.strokes ? '' : 'Pull back. Let go.';
+    this.noteUntil = 0;
+    this.noteText = '';
+    this.camera = cameraForViewport(window.innerWidth, window.innerHeight);
     this.reduceMotion = typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
     this.mount();
     this.makeBackground();
+    this.resize();
     this.updateUI();
     this.frame = requestAnimationFrame(t => this.animate(t));
   }
 
   mount() {
-    if (!document.getElementById('pension-golf-style')) { const style = document.createElement('style'); style.id = 'pension-golf-style'; style.textContent = STYLE + FINDABLE_STYLE; document.head.append(style); }
-    this.container.innerHTML = `<div class="golf-view" data-finale="${this.finale}"><div class="golf-surface"><canvas class="golf-canvas" width="900" height="680" tabindex="0" role="application" aria-label="Five-flag golf course. Drag back from the ball and release, or tap a target and choose Swing. Arrow left and right aim; up and down adjust power; space swings; C switches club."></canvas><button type="button" class="golf-findable" aria-label="Pick up the paper" title="Pick up the paper" hidden><span aria-hidden="true"></span></button></div><div class="golf-progress"></div><div class="golf-stats"><div class="golf-stat"><strong data-strokes>0</strong> strokes</div></div><div class="golf-flags" aria-hidden="true">${this.course.flags.map(f => `<span data-flag="${f.id}">${f.id + 1}</span>`).join('')}</div><div class="golf-note"></div><div class="golf-bar"><div class="golf-clubs" role="group" aria-label="Club"><button type="button" data-club="wedge" aria-pressed="true" title="Chip over obstacles">↗ Chip</button><button type="button" data-club="putter" aria-pressed="false" title="Roll along the ground">— Roll</button></div><label class="golf-power"><span>POWER</span><input type="range" min="8" max="100" value="55" aria-label="Shot power"></label><button type="button" class="golf-swing">Swing ↗</button></div><div class="golf-a11y" role="status" aria-live="polite"></div></div>`;
+    if (!document.getElementById('pension-golf-style')) { const style = document.createElement('style'); style.id = 'pension-golf-style'; style.textContent = STYLE; document.head.append(style); }
+    this.container.innerHTML = `<div class="golf-view" data-finale="${this.finale}"><div class="golf-surface"><canvas class="golf-canvas" tabindex="0" role="application" aria-label="Five-flag golf course. Drag back from the ball and release. Arrow keys aim and adjust power; Space swings; C changes club."></canvas><button type="button" class="golf-findable" aria-label="Pick up the paper" title="Pick up the paper" hidden><span aria-hidden="true"></span></button></div><div class="golf-hud"><div class="golf-stat" aria-label="Stroke count"><strong data-strokes>0</strong>${this.target ? `<small class="golf-target">/ &lt;${this.target}</small>` : ''}</div><div class="golf-flags" aria-hidden="true">${this.course.flags.map(f => `<span data-flag="${f.id}"></span>`).join('')}</div></div><div class="golf-note"></div><div class="golf-dock"><button type="button" class="golf-club-toggle" title="Change club">Chip ↗</button><button type="button" class="golf-shot-toggle" aria-label="Shot controls" aria-expanded="false" aria-controls="golf-shot-panel"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M4 7h16M4 17h16"/><circle cx="9" cy="7" r="2.5" fill="currentColor"/><circle cx="15" cy="17" r="2.5" fill="currentColor"/></svg></button></div><div class="golf-shot-panel" id="golf-shot-panel" hidden><label class="golf-power"><span>55%</span><input type="range" min="8" max="100" value="55" aria-label="Shot power"></label><button type="button" class="golf-swing">Swing ↗</button></div><div class="golf-a11y" role="status" aria-live="polite"></div></div>`;
     this.view = this.container.querySelector('.golf-view');
     this.canvas = this.view.querySelector('canvas');
     this.ctx = this.canvas.getContext('2d');
@@ -183,6 +206,9 @@ export class GolfGame {
     this.noteEl = this.view.querySelector('.golf-note');
     this.statusEl = this.view.querySelector('[role=status]');
     this.findableButton = this.view.querySelector('.golf-findable');
+    this.shotPanel = this.view.querySelector('.golf-shot-panel');
+    this.shotToggle = this.view.querySelector('.golf-shot-toggle');
+    this.clubToggle = this.view.querySelector('.golf-club-toggle');
     this.controller = new AbortController();
     const opts = { signal: this.controller.signal };
     this.canvas.addEventListener('pointerdown', e => this.pointerDown(e), opts);
@@ -192,30 +218,81 @@ export class GolfGame {
     this.canvas.addEventListener('keydown', e => this.keyDown(e), opts);
     this.view.querySelector('.golf-swing').addEventListener('click', () => this.swing(), opts);
     this.findableButton.addEventListener('click', () => this.pickUpFindable(), opts);
-    this.view.querySelectorAll('[data-club]').forEach(b => b.addEventListener('click', () => this.setClub(b.dataset.club), opts));
-    this.powerInput.addEventListener('input', () => { this.round.power = Number(this.powerInput.value); this.persist(); }, opts);
+    this.clubToggle.addEventListener('click', () => this.setClub(this.round.club === 'wedge' ? 'putter' : 'wedge'), opts);
+    this.shotToggle.addEventListener('click', () => this.setShotControls(this.shotPanel.hidden), opts);
+    this.powerInput.addEventListener('input', () => { this.round.power = Number(this.powerInput.value); this.updateUI(); this.persist(); }, opts);
     document.addEventListener('visibilitychange', () => { this.lastTime = 0; if (document.hidden) this.persist(); }, opts);
     window.addEventListener('pagehide', () => this.persist(), opts);
+    window.addEventListener('resize', () => this.resize(), opts);
+    this.resizeObserver = new ResizeObserver(() => this.resize());
+    this.resizeObserver.observe(this.container);
   }
 
   getSnapshot() { return JSON.parse(JSON.stringify(this.round)); }
   persist() { this.options.onChange?.(this.getSnapshot()); }
   setSound(enabled) { this.sound = Boolean(enabled); }
-  setProtestLevel(level) { this.protestLevel = clamp(Math.trunc(finite(level, 0)), 0, 3); this.makeBackground(); this.updateUI(); }
+  setProtestLevel(level) { this.protestLevel = clamp(Math.trunc(finite(level, 0)), 0, 3); this.makeBackground(); this.resize(); this.updateUI(); }
   setFindableFound(found = true) { if (this.findable) this.findable.found = Boolean(found); this.updateUI(); }
   findableAvailable() { return Boolean(this.findable && !this.findable.found && this.round.holes.filter(n => n !== null).length >= this.findable.afterFlags); }
   pickUpFindable() { if (!this.findableAvailable()) return; this.findable.found = true; this.updateUI(); this.options.onFind?.(this.findable.id); }
   setClub(club) { if (this.round.moving || this.round.finished) return; this.round.club = club === 'putter' ? 'putter' : 'wedge'; this.updateUI(); this.persist(); }
-  reset() { this.round = makeRound(this.course.index, this.course.variant); this.trail = []; this.note('Pull back. Let go.', Infinity); this.updateUI(); this.persist(); }
-  destroy() { this.persist(); this.destroyed = true; cancelAnimationFrame(this.frame); this.controller.abort(); this.audio?.close().catch(() => {}); this.container.innerHTML = ''; }
+  reset() { this.round = makeRound(this.course.index, this.course.variant); this.trail = []; this.note('', 0); this.updateUI(); this.persist(); }
+  destroy() { this.persist(); this.destroyed = true; cancelAnimationFrame(this.frame); this.controller.abort(); this.resizeObserver?.disconnect(); this.audio?.close().catch(() => {}); this.container.innerHTML = ''; }
 
-  point(e) { const r = this.canvas.getBoundingClientRect(); return { x: (e.clientX - r.left) / r.width * 900, y: (e.clientY - r.top) / r.height * 680 }; }
+  resize() {
+    if (this.destroyed || !this.canvas) return;
+    const rect = this.container.getBoundingClientRect();
+    if (!rect.width || !rect.height) return;
+    this.camera = cameraForViewport(rect.width, rect.height);
+    this.dpr = Math.min(2, Math.max(1, window.devicePixelRatio || 1));
+    this.canvas.width = Math.round(rect.width * this.dpr);
+    this.canvas.height = Math.round(rect.height * this.dpr);
+    this.positionFindable();
+    if (this.background) { this.makeViewportBackground(); this.draw(performance.now()); }
+  }
+  applyCamera(ctx) {
+    ctx.translate(this.camera.x, this.camera.y);
+    ctx.scale(this.camera.scale, this.camera.scale);
+    if (this.camera.rotation) { ctx.translate(WORLD.height, 0); ctx.rotate(this.camera.rotation); }
+  }
+  makeViewportBackground() {
+    const layer = document.createElement('canvas');
+    layer.width = this.canvas.width; layer.height = this.canvas.height;
+    const ctx = layer.getContext('2d'), cam = this.camera;
+    ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0); this.applyCamera(ctx);
+    const corners = [[0,0],[cam.width,0],[0,cam.height],[cam.width,cam.height]].map(([x,y]) => screenToWorld({x,y},cam));
+    const minX = Math.min(...corners.map(p=>p.x)), minY = Math.min(...corners.map(p=>p.y));
+    const w = Math.max(...corners.map(p=>p.x)) - minX, h = Math.max(...corners.map(p=>p.y)) - minY;
+    const season = this.course.variant % 4;
+    const gradient = ctx.createLinearGradient(0,0,900,680);
+    gradient.addColorStop(0,['#a2b785','#aab989','#9eb58f','#b1b587'][season]);
+    gradient.addColorStop(1,['#7f9b69','#8c9d6a','#7e9b75','#949b6a'][season]);
+    ctx.fillStyle = gradient; ctx.fillRect(minX-2,minY-2,w+4,h+4);
+    const random = seeded(1741 + this.course.index);
+    for(let i=0;i<2200;i++) { const x=minX+random()*w,y=minY+random()*h;ctx.fillStyle=random()>.6?'#d4dcab35':'#54744320';ctx.fillRect(x,y,.8,2.5); }
+    ctx.drawImage(this.background,0,0);
+    this.viewportBackground = layer;
+  }
+  positionFindable() {
+    if (!this.findable || !this.camera) return;
+    const flag = this.course.flags[clamp(this.findable.afterFlags - 1, 0, 4)];
+    const p = worldToScreen({ x: flag.x + 25, y: flag.y + 22 }, this.camera);
+    this.findableButton.style.left = `${p.x}px`;
+    this.findableButton.style.top = `${p.y}px`;
+  }
+  setShotControls(open) {
+    this.shotPanel.hidden = !open;
+    this.shotToggle.setAttribute('aria-expanded', String(open));
+    this.note('', 0);
+  }
+  point(e) { const r = this.canvas.getBoundingClientRect(); return screenToWorld({ x: e.clientX - r.left, y: e.clientY - r.top }, this.camera); }
   pointerDown(e) {
     if (this.round.moving || this.round.finished || e.button > 0) return;
     e.preventDefault(); this.canvas.focus({ preventScroll: true });
     const p = this.point(e);
-    const touchRadius = Math.max(44, 22 * 900 / this.canvas.getBoundingClientRect().width);
+    const touchRadius = ballTouchRadius(this.camera);
     if (distance(p, this.round.ball) < touchRadius) {
+      this.setShotControls(false);
       this.drag = { pointer: e.pointerId, start: p, moved: false };
       this.canvas.setPointerCapture(e.pointerId);
     } else {
@@ -223,7 +300,7 @@ export class GolfGame {
       // Ordinary play leaves power in the golfer's hands. Optional assistance
       // estimates a flat-lie distance when a target is tapped.
       if (this.options.assisted) this.round.power = powerForRange(distance(p, this.round.ball), this.round.club);
-      this.note('Swing when ready.', 1700); this.updateUI(); this.persist();
+      this.setShotControls(true); this.updateUI(); this.persist();
     }
   }
   pointerMove(e) {
@@ -241,7 +318,7 @@ export class GolfGame {
     this.drag = null;
     if (this.canvas.hasPointerCapture(e.pointerId)) this.canvas.releasePointerCapture(e.pointerId);
     if (moved) this.swing();
-    else this.note('Pull back. Let go.', 2200);
+    else this.setShotControls(true);
   }
   keyDown(e) {
     if (!['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', ' ', 'Enter', 'c', 'C'].includes(e.key)) return;
@@ -258,6 +335,7 @@ export class GolfGame {
   swing() {
     if (!launchShot(this.round)) return;
     this.trail = [];
+    this.setShotControls(false);
     this.note('', 0);
     this.playSound('swing');
     this.updateUI(); this.persist();
@@ -281,18 +359,20 @@ export class GolfGame {
   updateUI() {
     const r = this.round;
     this.findableButton.hidden = !this.findableAvailable();
-    if (this.findable) { const flag = this.course.flags[clamp(this.findable.afterFlags - 1, 0, 4)]; this.findableButton.style.left = `${(flag.x + 25) / 900 * 100}%`; this.findableButton.style.top = `${(flag.y + 22) / 680 * 100}%`; }
+    this.positionFindable();
     this.view.querySelector('[data-strokes]').textContent = r.strokes;
-    this.view.querySelectorAll('[data-flag]').forEach(el => { const done = r.holes[Number(el.dataset.flag)] !== null; el.classList.toggle('done', done); el.textContent = done ? '✓' : Number(el.dataset.flag) + 1; });
-    this.view.querySelector('.golf-progress').style.width = `${r.holes.filter(n => n !== null).length * 20}%`;
-    this.view.querySelectorAll('[data-club]').forEach(el => { el.setAttribute('aria-pressed', String(el.dataset.club === r.club)); el.disabled = r.moving || r.finished; });
+    this.view.querySelectorAll('[data-flag]').forEach(el => { const done = r.holes[Number(el.dataset.flag)] !== null; el.classList.toggle('done', done); el.setAttribute('title', `Flag ${Number(el.dataset.flag) + 1}${done ? ' complete' : ''}`); });
+    this.clubToggle.textContent = r.club === 'putter' ? 'Roll —' : 'Chip ↗';
+    this.clubToggle.setAttribute('aria-label', `${r.club === 'putter' ? 'Roll' : 'Chip'} selected. Change club.`);
+    this.clubToggle.disabled = r.moving || r.finished;
+    this.shotToggle.disabled = r.moving || r.finished;
     this.powerInput.value = Math.round(r.power);
     this.view.querySelector('.golf-power span').textContent = `${Math.round(r.power)}%`;
     this.powerInput.disabled = r.moving || r.finished;
     this.view.querySelector('.golf-swing').disabled = r.moving || r.finished;
     this.view.querySelector('.golf-swing').textContent = r.finished ? 'Complete ✓' : 'Swing ↗';
     this.noteEl.textContent = this.noteText;
-    this.canvas.setAttribute('aria-label', `Golf: ${r.strokes} strokes, ${r.holes.filter(n => n !== null).length} of 5 flags. ${r.club === 'wedge' ? 'Chip' : 'Roll'}, ${Math.round(r.power)} percent power. ${this.findableAvailable() ? 'A paper lies on the green. ' : ''}${this.protestLevel ? `${[0, 12, 36, 108][this.protestLevel]} protesters gather beyond the course.${this.protestLevel > 1 ? ' They chant Robert Trent Jones.' : ''} ` : ''}Drag back and release, or tap a target and Swing. Arrows aim and adjust power; space swings; C changes club.`);
+    this.canvas.setAttribute('aria-label', `Golf: ${r.strokes} strokes${this.target ? `, beat ${this.target}` : ''}, ${r.holes.filter(n => n !== null).length} of 5 flags. ${r.club === 'wedge' ? 'Chip' : 'Roll'}, ${Math.round(r.power)} percent power. ${this.findableAvailable() ? 'A paper lies on the green. ' : ''}${this.protestLevel ? `${[0, 12, 36, 108][this.protestLevel]} protesters gather beyond the course.${this.protestLevel > 1 ? ' They chant Robert Trent Jones.' : ''} ` : ''}Drag back and release, or tap a target and Swing. Arrows aim and adjust power; space swings; C changes club.`);
   }
   animate(time) {
     if (this.destroyed) return;
@@ -308,9 +388,9 @@ export class GolfGame {
           if (this.tick % 3 === 0) { this.trail.push({ x: this.round.ball.x, y: this.round.ball.y }); if (this.trail.length > 13) this.trail.shift(); }
           if (event) {
             this.updateUI(); this.persist();
-            if (event.type === 'water') { this.note('Water. +1 stroke.'); this.playSound('water'); }
-            if (event.type === 'hole') { this.note(`${event.score === 1 ? 'One beautiful shot.' : 'In the cup.'} ${5 - this.round.holes.filter(n => n !== null).length} to go.`); this.playSound('hole'); }
-            if (event.type === 'complete') { this.note(`${this.round.strokes} strokes. Round complete.`, Infinity); this.playSound('hole'); this.options.onComplete?.({ strokes: this.round.strokes, holes: [...this.round.holes], finished: true }); }
+            if (event.type === 'water') { this.note('Water +1'); this.playSound('water'); }
+            if (event.type === 'hole') { this.statusEl.textContent = `Flag ${event.flag + 1}, ${event.score} strokes.`; this.playSound('hole'); }
+            if (event.type === 'complete') { this.statusEl.textContent = `${this.round.strokes} strokes. Round complete.`; this.playSound('hole'); this.options.onComplete?.({ strokes: this.round.strokes, holes: [...this.round.holes], finished: true }); }
           } else if (this.tick % 15 === 0) this.persist();
         }
       }
@@ -393,22 +473,25 @@ export class GolfGame {
 
   draw(time) {
     const ctx = this.ctx, r = this.round, b = r.ball;
-    ctx.clearRect(0, 0, 900, 680); ctx.drawImage(this.background, 0, 0);
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    if (this.viewportBackground) ctx.drawImage(this.viewportBackground, 0, 0);
+    ctx.setTransform(this.dpr || 1, 0, 0, this.dpr || 1, 0, 0); this.applyCamera(ctx);
     if (this.protestLevel >= 2) {
-      ctx.save(); ctx.globalAlpha = this.reduceMotion ? .68 : .5 + Math.sin(time / 2600) * .18;
-      ctx.font = '9px Georgia'; ctx.textAlign = 'center'; ctx.fillStyle = '#385140'; ctx.fillText('JONES.', 569, 598);
-      if (this.protestLevel === 3) { ctx.globalAlpha *= .8; ctx.fillText('JONES.', 375, 606); ctx.fillText('JONES.', 747, 601); }
-      ctx.restore();
+      const chant = (x,y,alpha) => { ctx.save();ctx.translate(x,y);ctx.rotate(-this.camera.rotation);ctx.globalAlpha=alpha;ctx.font='9px Georgia';ctx.textAlign='center';ctx.fillStyle='#385140';ctx.fillText('JONES.',0,0);ctx.restore(); };
+      const alpha = this.reduceMotion ? .68 : .5 + Math.sin(time / 2600) * .18;
+      chant(569,598,alpha);
+      if (this.protestLevel === 3) { chant(375,606,alpha*.8);chant(747,601,alpha*.8); }
     }
     for (const f of this.course.flags) {
       const done = r.holes[f.id] !== null;
       oval(ctx, f.x + 12, f.y + 4, 16, 2, '#37542c30', .22);
       oval(ctx, f.x, f.y, 6, 4, '#476345'); oval(ctx, f.x, f.y - .5, 4, 2.7, '#263e31');
-      if (done) { ctx.strokeStyle = '#f3eed6'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(f.x - 4, f.y - 13); ctx.lineTo(f.x - 1, f.y - 10); ctx.lineTo(f.x + 5, f.y - 17); ctx.stroke(); continue; }
-      ctx.strokeStyle = '#f9f2d7'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(f.x, f.y - 1); ctx.lineTo(f.x, f.y - 40); ctx.stroke();
+      ctx.save();ctx.translate(f.x,f.y);ctx.rotate(-this.camera.rotation);
+      if (done) { ctx.strokeStyle = '#f3eed6'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(-4,-13); ctx.lineTo(-1,-10); ctx.lineTo(5,-17); ctx.stroke();ctx.restore();continue; }
+      ctx.strokeStyle = '#f9f2d7'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(0,-1); ctx.lineTo(0,-40); ctx.stroke();
       const wave = this.reduceMotion ? 0 : Math.sin(time / 850 + f.id) * 1.6;
-      ctx.fillStyle = this.finale ? '#685061' : '#b8654b'; ctx.beginPath(); ctx.moveTo(f.x + 1, f.y - 40); ctx.quadraticCurveTo(f.x + 10, f.y - 42 + wave, f.x + 22, f.y - 34); ctx.lineTo(f.x + 1, f.y - 27); ctx.closePath(); ctx.fill();
-      ctx.font = 'bold 10px system-ui'; ctx.fillStyle = '#fff8df'; ctx.textAlign = 'center'; ctx.fillText(String(f.id + 1), f.x + 8, f.y - 31);
+      ctx.fillStyle = this.finale ? '#685061' : '#b8654b'; ctx.beginPath(); ctx.moveTo(1,-40); ctx.quadraticCurveTo(10,-42+wave,22,-34); ctx.lineTo(1,-27); ctx.closePath(); ctx.fill();
+      ctx.font = 'bold 10px system-ui'; ctx.fillStyle = '#fff8df'; ctx.textAlign = 'center'; ctx.fillText(String(f.id + 1),8,-31);ctx.restore();
     }
     if (!r.moving && !r.finished) {
       const range = rangeForPower(r.power, r.club), maxPreview = this.options.assisted ? range : Math.min(range, 115);
@@ -423,8 +506,10 @@ export class GolfGame {
     if (!r.finished) {
       const height = b.airTotal > 0 ? Math.sin(Math.PI * b.air / b.airTotal) * (18 + r.power * .4) : 0;
       oval(ctx, b.x + 3 + height * .13, b.y + 3, 5 + height * .035, 3 + height * .015, '#1b423a60');
-      const glow = ctx.createRadialGradient(b.x - 1, b.y - height - 2, .3, b.x, b.y - height, 5); glow.addColorStop(0, '#fffef5'); glow.addColorStop(1, '#dedfca'); oval(ctx, b.x, b.y - height, 4.8, 4.8, glow);
-      oval(ctx, b.x - 1.1, b.y - height - 1.5, 1.4, 1.1, '#fff');
+      const liftX = -Math.sin(this.camera.rotation) * height, liftY = -Math.cos(this.camera.rotation) * height;
+      const ballX = b.x + liftX, ballY = b.y + liftY, radius = Math.max(4.8, 3.5 / this.camera.scale);
+      const glow = ctx.createRadialGradient(ballX - 1, ballY - 2, .3, ballX, ballY, radius); glow.addColorStop(0, '#fffef5'); glow.addColorStop(1, '#dedfca'); oval(ctx, ballX, ballY, radius, radius, glow);
+      oval(ctx, ballX - 1.1, ballY - 1.5, 1.4, 1.1, '#fff');
     }
   }
 }
