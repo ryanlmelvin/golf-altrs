@@ -1,5 +1,5 @@
 /* Bump VERSION whenever a shipped asset changes. New workers wait for open games to close. */
-const VERSION = '2.3.0';
+const VERSION = '2.3.1';
 const SCOPE = new URL(self.registration.scope);
 const PREFIX = `pension-plan:${SCOPE.pathname}:`;
 const CACHE = PREFIX + VERSION;
